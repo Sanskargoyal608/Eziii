@@ -1,0 +1,19 @@
+# --- Python Virtual Environment ---
+# Ignore the virtual environment folder
+venv/
+__pycache__/
+
+# --- Django Specific ---
+# Ignore the default SQLite database file
+*.sqlite3
+# Ignore user-uploaded media files
+/media/
+
+# --- Environment Variables ---
+# Ignore files containing secret keys, passwords, etc.
+.env
+
+# --- IDE / Editor Folders ---
+# Ignore settings from common editors
+.vscode/
+.idea/
