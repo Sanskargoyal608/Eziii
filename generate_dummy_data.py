@@ -1,16 +1,17 @@
-import psycopg2
-import json
-from faker import Faker
+import os
+import django
 import random
 import hashlib
+from faker import Faker
 
-# --- DATABASE CONNECTION DETAILS ---
-# Replace with your actual database connection details
-DB_NAME = "your_db_name"
-DB_USER = "your_db_user"
-DB_PASS = "your_db_password"
-DB_HOST = "localhost"
-DB_PORT = "5432"
+# --- SETUP DJANGO ENVIRONMENT ---
+# This is crucial to allow this standalone script to access your Django models
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'eduverify_backend.settings')
+django.setup()
+
+# --- IMPORT YOUR MODELS ---
+# Must be done *after* django.setup()
+from core.models import Student, Document, GovtJob, Scholarship
 
 # --- CONFIGURATION ---
 NUM_STUDENTS = 150
@@ -19,84 +20,71 @@ NUM_SCHOLARSHIPS = 50
 DOCS_PER_STUDENT = 7
 
 # Initialize Faker for generating fake data
-fake = Faker('en_IN') # Using Indian locale for more relevant names/addresses
+fake = Faker('en_IN')
 
-def get_db_connection():
-    """Establishes a connection to the PostgreSQL database."""
-    try:
-        conn = psycopg2.connect(
-            dbname=DB_NAME,
-            user=DB_USER,
-            password=DB_PASS,
-            host=DB_HOST,
-            port=DB_PORT
-        )
-        return conn
-    except psycopg2.OperationalError as e:
-        print(f"Error: Could not connect to the database. Please check your connection details.")
-        print(f"Details: {e}")
-        return None
+def clear_data():
+    """Deletes all data from the tables to start fresh."""
+    print("Deleting old data...")
+    Document.objects.all().delete()
+    GovtJob.objects.all().delete()
+    Scholarship.objects.all().delete()
+    Student.objects.all().delete()
+    print("Old data deleted.")
 
-def generate_students(cursor):
-    """Generates and inserts fake student data."""
+def generate_students():
+    """Generates and saves fake student data."""
     students = []
     print(f"Generating {NUM_STUDENTS} students...")
     for _ in range(NUM_STUDENTS):
-        full_name = fake.name()
-        email = fake.unique.email()
-        password = "password123" # Use a default password for all
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
-        phone_number = fake.phone_number()
         profile = {
             "address": fake.address().replace('\n', ', '),
             "date_of_birth": fake.date_of_birth(minimum_age=18, maximum_age=25).isoformat(),
             "income_pa": random.choice([200000, 450000, 600000, 800000, 1200000])
         }
-        
-        cursor.execute(
-            """
-            INSERT INTO Students (full_name, email, password_hash, phone_number, profile_details)
-            VALUES (%s, %s, %s, %s, %s) RETURNING student_id;
-            """,
-            (full_name, email, password_hash, phone_number, json.dumps(profile))
+        password = "password123"
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+
+        student = Student.objects.create(
+            full_name=fake.name(),
+            email=fake.unique.email(),
+            password_hash=password_hash,
+            phone_number=fake.phone_number(),
+            profile_details=profile
         )
-        student_id = cursor.fetchone()[0]
-        students.append({'id': student_id, 'profile': profile})
-    print("Students generated.")
+        students.append(student)
+    print("Students generated successfully.")
     return students
 
-def generate_documents(cursor, students):
-    """Generates fake documents for each student."""
+def generate_documents(students):
+    """Generates fake documents for a list of student objects."""
     print("Generating documents...")
     doc_types = ['Aadhaar Card', '12th Marksheet', '10th Marksheet', 'B.Tech Certificate', 'Diploma Certificate', 'Income Certificate']
     statuses = ['Verified', 'Pending', 'Rejected']
-    
+
     for student in students:
-        for _ in range(DOCS_PER_STUDENT):
+        for _ in range(random.randint(3, DOCS_PER_STUDENT)):
             doc_type = random.choice(doc_types)
             status = random.choice(statuses)
             verified_data = None
             if status == 'Verified':
-                # Create some mock verified data based on doc type
                 if 'Marksheet' in doc_type or 'Certificate' in doc_type:
                     verified_data = {
                         "degree": "B.Tech" if 'B.Tech' in doc_type else 'Diploma' if 'Diploma' in doc_type else 'HSC',
                         "percentage": round(random.uniform(60.0, 98.5), 2)
                     }
                 elif 'Income' in doc_type:
-                    verified_data = {"income_pa": student['profile']['income_pa']}
-            
-            cursor.execute(
-                """
-                INSERT INTO Documents (student_id, document_type, submission_info, verification_status, verified_data)
-                VALUES (%s, %s, %s, %s, %s);
-                """,
-                (student['id'], doc_type, f"app_no_{random.randint(10000, 99999)}", status, json.dumps(verified_data) if verified_data else None)
+                    verified_data = {"income_pa": student.profile_details['income_pa']}
+
+            Document.objects.create(
+                student=student,
+                document_type=doc_type,
+                submission_info=f"app_no_{random.randint(10000, 99999)}",
+                verification_status=status,
+                verified_data=verified_data
             )
-    print("Documents generated.")
+    print("Documents generated successfully.")
 
-
-def generate_jobs_and_scholarships(cursor):
+def generate_jobs_and_scholarships():
     """Generates fake jobs and scholarships."""
     print("Generating jobs and scholarships...")
     # Jobs
@@ -107,14 +95,13 @@ def generate_jobs_and_scholarships(cursor):
             "degree": random.choice(degrees),
             "min_cgpa": round(random.uniform(6.0, 8.0), 1),
         }
-        cursor.execute(
-            """
-            INSERT INTO Govt_Jobs (job_title, job_description, eligibility_criteria, source_url)
-            VALUES (%s, %s, %s, %s);
-            """,
-            (random.choice(job_titles), fake.paragraph(nb_sentences=5), json.dumps(eligibility), fake.url())
+        GovtJob.objects.create(
+            job_title=random.choice(job_titles),
+            job_description=fake.paragraph(nb_sentences=5),
+            eligibility_criteria=eligibility,
+            source_url=fake.url()
         )
-    
+
     # Scholarships
     scholarship_names = ["Merit Scholarship for Engineers", "Financial Aid for Students", "State Education Grant"]
     for _ in range(NUM_SCHOLARSHIPS):
@@ -122,42 +109,24 @@ def generate_jobs_and_scholarships(cursor):
             "max_income_pa": random.choice([500000, 700000, 900000]),
             "min_percentage": random.choice([75, 80, 85, 90])
         }
-        cursor.execute(
-            """
-            INSERT INTO Scholarships (scholarship_name, description, eligibility_criteria, amount, source_url)
-            VALUES (%s, %s, %s, %s, %s);
-            """,
-            (random.choice(scholarship_names), fake.paragraph(nb_sentences=3), json.dumps(eligibility), random.randint(10000, 50000), fake.url())
+        Scholarship.objects.create(
+            scholarship_name=random.choice(scholarship_names),
+            description=fake.paragraph(nb_sentences=3),
+            eligibility_criteria=eligibility,
+            amount=random.randint(10000, 50000),
+            source_url=fake.url()
         )
-    print("Jobs and scholarships generated.")
+    print("Jobs and scholarships generated successfully.")
 
 
 def main():
     """Main function to run the data generation process."""
-    conn = get_db_connection()
-    if conn is None:
-        return
-        
-    try:
-        with conn.cursor() as cursor:
-            # Clear existing data in the correct order to respect foreign key constraints
-            print("Clearing old data...")
-            cursor.execute("TRUNCATE TABLE Student_Skills, Documents, Students, Govt_Jobs, Scholarships, Skills RESTART IDENTITY CASCADE;")
-            
-            # Generate and insert new data
-            students = generate_students(cursor)
-            generate_documents(cursor, students)
-            generate_jobs_and_scholarships(cursor)
-            
-            print("\nDatabase seeding successful!")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        conn.rollback()
-    finally:
-        conn.commit()
-        conn.close()
-        print("Database connection closed.")
-
+    clear_data()
+    students_list = generate_students()
+    generate_documents(students_list)
+    generate_jobs_and_scholarships()
+    print("\n✅ Database seeding successful!")
 
 if __name__ == "__main__":
     main()
+

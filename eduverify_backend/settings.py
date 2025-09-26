@@ -37,7 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'core',
+    'core.apps.CoreConfig',
 ]
 
 MIDDLEWARE = [
@@ -78,7 +78,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'eduverify_db',      # The name we will create in Week 2
         'USER': 'postgres',         # Your PostgreSQL username
-        'PASSWORD': 'your_password', # The password you set during installation
+        'PASSWORD': '1234', # The password you set during installation
         'HOST': 'localhost',        # Or '127.0.0.1'
         'PORT': '5432',
     }
