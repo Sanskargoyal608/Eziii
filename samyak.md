@@ -1,99 +1,91 @@
-# Frontend Lead & UI/UX Developer Tasks
+# Frontend Lead & Secondary Backend Developer Tasks
 
-This document outlines your specific tasks as the Frontend Lead & UI/UX Developer, aligning with the revised project roadmap.
+This document outlines your updated tasks, which now include backend responsibilities.
+
+### Technology Stack:
+- **Frontend**: React, Vite, CSS Modules
+- **Backend**: Python, Flask, SQLite
 
 ---
 
 ## Weeks 1-6: Foundation (COMPLETE)
 
 ### Recap:
-- Successfully set up the frontend project using Vite and CSS Modules.
-- Overcame earlier technical challenges and now have a stable application.
-- The application is correctly displaying document data fetched from the primary Django API.
+- The frontend project is stable on Vite and CSS Modules.
+- It is successfully displaying document data fetched from your partner's Django API.
 
 ---
 
-## Week 7: Build New UI Components
+## Week 7: Set Up the Second Data Source (Your Backend)
 
 ### Goal:
-Create the visual components for displaying jobs and scholarships.
+On your own machine, create and populate the separate SQLite database for jobs and scholarships.
 
 ### Tasks:
 
-1. **Create two new components:**
-   - `JobList.jsx`
-   - `ScholarshipList.jsx`
+1. **Install Python and pip** on your machine if you haven’t already.
 
-2. **Create corresponding CSS module files:**
-   - `JobList.module.css`
-   - `ScholarshipList.module.css`
+2. **Run the setup script provided by your partner**:
+   - Your partner will provide a Python script named `setup_sqlite.py`.
+   - Run this script on your computer to create the `federated_data.db` file, which will be your SQLite database.
 
-3. **Populate these components with static, hard-coded data:**
-   - Create small, fake arrays of job/scholarship objects inside each component file.
-   - Render the data in a card-based design, similar to the `DocumentList` component.
+3. **Populate the SQLite database**:
+   - Your partner will also provide an updated `generate_dummy_data.py` script.
+   - Run the specific function from this script to populate the `federated_data.db` with `GovtJob` and `Scholarship` data.
 
-4. **Update `App.jsx`:**
-   - Import these new components into `App.jsx`.
-   - Add new sections to the `Home` component to display the `JobList` and `ScholarshipList` components, similar to how "My Documents" is displayed.
+4. **Frontend Task**:
+   - Continue your frontend work by building the static (hard-coded) components for **JobList.jsx** and **ScholarshipList.jsx** using **CSS Modules**.
+   - For now, populate these components with fake data to display job and scholarship information.
 
 ---
 
-## Week 8: Connect to the Federated API
+## Week 8: Build the Secondary API (Your Backend)
 
 ### Goal:
-Transition from static data to live data from the new Flask API.
+Create a simple Flask API on your machine to serve data from your SQLite database.
 
 ### Tasks:
 
-1. **Coordinate with Team Member A** to get the URL for the new Flask API (e.g., `http://<TEAM_A_IP_ADDRESS>:5000/api/jobs`).
-
-2. **Modify `JobList.jsx` and `ScholarshipList.jsx` components:**
-   - Use the `useEffect` and `useState` hooks to fetch data from the Flask API endpoints when the components load.
-
-3. **Implement loading and error states:**
-   - Implement loading and error states, similar to the `DocumentList` component, to provide good user feedback.
-
----
-
-## Week 9: Integrate the Query Engine
-
-### Goal:
-Connect the chat interface to the backend's query analyzer.
-
-### Tasks:
-
-1. **Refine the UI of `FederatedChat.jsx`:**
-   - Ensure the chat interface looks clean and is easy to use.
-
-2. **Create a new function in `FederatedChat`** that handles sending a user's query to the backend:
-   - This function will make a POST request to a new endpoint on the Django server (e.g., `/api/query/`), which Team Member A will create.
-
-3. **Modify the POST request:**
-   - The body of the request will contain the user's text, e.g.:
-     ```json
-     {'query': 'show me my jobs'}
+1. **Install Flask**:
+   - Install Flask and Flask-CORS: 
+     ```bash
+     pip install Flask Flask-Cors
      ```
 
-4. **Update the chat logic**:
-   - Ensure that the results sent back from the backend are displayed correctly in the chat window.
+2. **Create the Flask API**:
+   - Create a new file named `federated_api.py`.
+
+3. **Build the Flask App**:
+   - Connect the Flask app to your `federated_data.db` SQLite database.
+   - Create two API endpoints:
+     - `/api/jobs`: Queries the `govt_jobs` table and returns the results as JSON.
+     - `/api/scholarships`: Queries the `scholarships` table and returns the results as JSON.
+
+4. **Configure CORS**:
+   - Configure CORS on your Flask app to allow requests from your React frontend (e.g., `http://localhost:5173`).
+
+5. **Run the Flask Server**:
+   - Run the Flask server on your local machine.
 
 ---
 
-## Week 10: Task 2 Evaluation
+## Week 9: Connect Frontend & Integrate
 
 ### Goal:
-Prepare for and present a successful demonstration.
+Connect your React components to your new Flask API and prepare for the final demonstration.
 
 ### Tasks:
 
-1. **Ensure the end-to-end flow is working:**
-   - A user should type a query, the frontend sends it to Django, Django runs the analyzer, the analyzer calls the correct API (Django or Flask), and the results are displayed back in the chat window.
+1. **Modify the `JobList.jsx` and `ScholarshipList.jsx` components**:
+   - Update these components to fetch data from your local Flask API endpoints (e.g., `http://localhost:5000/api/jobs`).
 
-2. **Collaborate with Team Member A** to write the user-facing sections of the submission document:
-   - Project statement.
-   - Objectives.
-   - Example queries.
+2. **Federated Query Integration**:
+   - Work with your partner to integrate the federated query engine.
+   - Modify the `FederatedChat` component to send user queries to a new endpoint on your partner's Django server.
 
-3. **Prepare to demonstrate the project to the TA:**
-   - Be ready to explain your role, the frontend architecture, and how everything integrates.
+3. **Display Results in Chat**:
+   - Display the results returned by the federated query engine in the chat window.
 
+---
+
+This document clearly outlines your tasks for the upcoming weeks as both a frontend lead and a secondary backend developer. Let me know if you'd like to adjust or add anything!

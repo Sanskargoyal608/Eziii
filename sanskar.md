@@ -1,99 +1,109 @@
-# Backend Lead & Federated Engine Architect Tasks
+# Backend Lead, Database Administrator, Federated Engine Architect Tasks
 
-This document outlines your specific tasks as the Backend Lead & Federated Engine Architect, aligning with the revised project roadmap.
+This document outlines your specific tasks based on the corrected distributed architecture.
+
+### Technology Stack:
+- **Python**
+- **Django**
+- **PostgreSQL**
 
 ---
 
 ## Weeks 1-6: Foundation (COMPLETE)
 
 ### Recap:
-- Successfully built the Django backend with a PostgreSQL database.
-- Created a working API for documents.
-- Assisted in troubleshooting the frontend migration to Vite.
+- You have a working Django backend with a populated PostgreSQL database and a document API.
+- Your system is the **primary data source**.
 
 ---
 
-## Week 7: Set Up the Second Data Source
+## Week 7: Configure for Remote Access
 
 ### Goal:
-Create a separate, independent database for jobs and scholarships to simulate a distributed environment.
+Allow your partner's applications (both his React frontend and his future Flask API) to connect to your PostgreSQL database over the network.
 
 ### Tasks:
 
-1. **Create a new Python script (`setup_sqlite.py`):**
-   - Use the `sqlite3` library to create a database file named `federated_data.db`.
+1. **Locate Config Files:**
+   - Find the following configuration files in your PostgreSQL data directory (e.g., `C:\Program Files\PostgreSQL\<VERSION>\data\`):
+     - `postgresql.conf`
+     - `pg_hba.conf`
 
-2. **Write the `CREATE TABLE` SQL statements** for the following tables:
-   - `govt_jobs`: Structure should match the models in your Django project.
-   - `scholarships`: Structure should match the models in your Django project.
-
-3. **Modify your `generate_dummy_data.py` script**:
-   - Add functions that connect to the new `federated_data.db` and populate the `govt_jobs` and `scholarships` tables.
-   - Keep the existing logic that populates students and documents in the PostgreSQL database.
-
----
-
-## Week 8: Build the Federated API
-
-### Goal:
-Create a separate microservice to expose the data from the new SQLite database.
-
-### Tasks:
-
-1. **Install Flask and Flask-CORS**:
-   - Run the following command:
-     ```bash
-     pip install Flask Flask-Cors
+2. **Edit `postgresql.conf`:**
+   - Change:
+     ```conf
+     listen_addresses = 'localhost'
+     ```
+     to:
+     ```conf
+     listen_addresses = '*'
      ```
 
-2. **Create a new file `federated_api.py`**:
-   - In this file, build a simple Flask application.
+3. **Edit `pg_hba.conf`:**
+   - Add a new line at the bottom to allow your partner's IP address to connect. You will need to ask your partner for his local IP.
+     ```conf
+     # TYPE  DATABASE    USER      ADDRESS                          METHOD
+     host    all         all       <YOUR_PARTNER_IP_ADDRESS>/32      md5
+     ```
 
-3. **Create two API endpoints**:
-   - `/api/jobs`: Query the `govt_jobs` table in `federated_data.db` and return the results as JSON.
-   - `/api/scholarships`: Query the `scholarships` table and return the results as JSON.
+4. **Restart PostgreSQL Server:**
+   - Use the "Services" app in Windows to restart the PostgreSQL service.
 
-4. **Configure CORS** in your Flask app to allow requests from the partner's React frontend (`http://localhost:5173`).
+5. **Configure Windows Firewall:**
+
+   - Open "Windows Defender Firewall with Advanced Security".
+   - Create a new "Inbound Rule":
+     - **Rule Type:** Port
+     - **Protocol and Ports:** TCP, Specific local ports: 5432
+     - **Action:** Allow the connection
+     - **Profile:** Keep all checked
+     - **Name:** "PostgreSQL Project Access"
+
+6. **Provide Connection Details:**
+   - Give your partner your local IP address, PostgreSQL username, and password so he can test the connection.
 
 ---
 
-## Week 9: Develop the Query Decomposer
+## Week 8: Build the Query Decomposer
 
 ### Goal:
-Build the core logic for your Task 2 evaluation.
+Build the initial version of the core query analysis and decomposition logic.
 
 ### Tasks:
 
 1. **Work primarily in the `query_analyzer.py` script**:
-   - Create a main function that accepts a natural language text query as input (e.g., "Show me my verified documents").
+   - Create a function that accepts a text query as input (e.g., "show me scholarships").
 
-2. **Implement a simple keyword-based decomposition logic**:
-   - If the query contains "document" or "certificate", identify the target as the "Django Document API".
-   - If the query contains "job" or "career", identify the target as the "Flask Job API".
-   - If the query contains "scholarship" or "funding", identify the target as the "Flask Scholarship API".
+2. **Implement a simple keyword-based logic** to decide which data source to target:
+   - **Keywords like** "job", "career" -> Target **Partner's Flask API**.
+   - **Keywords like** "scholarship", "fund" -> Target **Partner's Flask API**.
+   - **Keywords like** "document", "certificate" -> Target your own **Django API**.
 
-3. **Output**:
-   - Your script's output should be a simple plan, e.g.,:
+3. **Output Example**:
+   - Your script’s output should be a plan, such as:
      ```python
-     {'target': 'http://localhost:8000/api/documents/', 'params': {}}
+     {'target_api': 'http://<PARTNER_IP>:5000/api/scholarships'}
      ```
 
 ---
 
-## Week 10: Task 2 Evaluation
+## Week 9: Implement Query Execution
 
 ### Goal:
-Prepare for and present a successful demonstration.
+Enhance the analyzer to execute the query plan.
 
 ### Tasks:
 
-1. **Enhance `query_analyzer.py`** to execute the plan:
-   - The script should now make the fetch call to the identified API (e.g., `Django` or `Flask`).
+1. **Enhance the `query_analyzer.py` script**:
+   - Add logic to use a library like `requests` to make an actual API call to the target URL identified in Week 8.
 
-2. **Collaborate with the partner** to integrate the script with the React chat UI:
-   - The frontend will send the user's query to a new "query" endpoint on your Django server, which will then run your script.
+2. **Create a new endpoint in your Django application**:
+   - Endpoint: `/api/federated-query/`
+   - This endpoint should:
+     - Receive a query from the frontend.
+     - Run your `query_analyzer.py` script.
+     - Return the final result (e.g., from your Django API or your partner's Flask API).
 
-3. **Write the technical sections** of the submission document:
-   - Database schemas.
-   - Architecture choice.
-   - Pseudo-algorithm.
+---
+
+This document outlines your tasks and provides a structured approach to ensure that all backend responsibilities are met for the project. Let me know if you'd like to adjust anything or add more details!
