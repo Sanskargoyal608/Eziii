@@ -1,39 +1,99 @@
-# Team Member B (Partner's) Task List
+# Frontend Lead & UI/UX Developer Tasks
 
-This is your focused set of responsibilities. You will manage the secondary data source (jobs/scholarships) and its API, and will be the primary developer for the frontend UI components.
+This document outlines your specific tasks as the Frontend Lead & UI/UX Developer, aligning with the revised project roadmap.
 
-## Phase 2: Distributed Architecture & API Development (Weeks 4-7)
+---
 
-### Week 4: SQLite Database & Flask API
-- [ ] **Set Up SQLite**: Create an SQLite database file (`opportunities.db`).
-- [ ] **Write Schema**: Create the `govt_jobs` and `scholarships` tables.
-- [ ] **Populate Database**: Adapt the existing `generate_dummy_data.py` script to connect to your SQLite file and populate these tables.
-- [ ] **Build Flask API**: Create a simple Python Flask application.
-  - This application should have at least one endpoint, e.g., `/api/opportunities`, that queries your SQLite database and returns the results in JSON format. This is how Team A will access your data.
+## Weeks 1-6: Foundation (COMPLETE)
 
-### Week 5-6: Frontend UI Component Development
-- [ ] **Build Dashboard Components**: Within the React project set up by Team A, create the UI components that will be on the main dashboard page.
-  - `DocumentList.js`: A component that shows a list of documents.
-  - `JobCarousel.js`: A component that displays job cards in a horizontal scroll view.
-  - `ScholarshipCarousel.js`: Similar to the job carousel.
-- [ ] **Connect Document List**: Implement the logic inside `DocumentList.js` to make an API call to Team A's Django backend, fetch the documents for the logged-in user, and display them.
+### Recap:
+- Successfully set up the frontend project using Vite and CSS Modules.
+- Overcame earlier technical challenges and now have a stable application.
+- The application is correctly displaying document data fetched from the primary Django API.
 
-### Week 7: Refine Flask API
-- [ ] **Add Search Functionality**: Enhance your Flask API. Create new endpoints that allow for more specific queries, for example: `/api/jobs/search?degree=B.Tech`.
-- [ ] **Work with Team A** to define the exact API request/response formats needed for the federated engine.
+---
 
-## Phase 3: Core Logic & Feature Implementation (Weeks 8-10)
+## Week 7: Build New UI Components
 
-### Week 8-9: Connect Chat UI to Backend
-- [ ] **Implement API Call**: In the `ChatQueryInterface.js` component, write the code that takes the user's text from the input field.
-- [ ] **Send this text in a POST request** to the new federated API endpoint created by Team A.
-- [ ] **Render Results**: Write the logic to receive the integrated JSON response from the API and display it nicely within the chat window.
+### Goal:
+Create the visual components for displaying jobs and scholarships.
 
-### Week 10: Task 2 Demo
-- [ ] **Support the Demonstration** by explaining the frontend implementation and the role of your Flask API.
+### Tasks:
 
-## Phase 4: Full Feature & Final Deliverables (Weeks 11-14)
+1. **Create two new components:**
+   - `JobList.jsx`
+   - `ScholarshipList.jsx`
 
-### Week 11-12: Connect Main Dashboard
-- [ ] **Connect the JobCarousel.js and ScholarshipCarousel.js** components to the new "proactive recommendation" API endpoints created by Team A.
-- [ ] **Ensure the main dashboard** now displays the correct, personalized opportunities for the user.
+2. **Create corresponding CSS module files:**
+   - `JobList.module.css`
+   - `ScholarshipList.module.css`
+
+3. **Populate these components with static, hard-coded data:**
+   - Create small, fake arrays of job/scholarship objects inside each component file.
+   - Render the data in a card-based design, similar to the `DocumentList` component.
+
+4. **Update `App.jsx`:**
+   - Import these new components into `App.jsx`.
+   - Add new sections to the `Home` component to display the `JobList` and `ScholarshipList` components, similar to how "My Documents" is displayed.
+
+---
+
+## Week 8: Connect to the Federated API
+
+### Goal:
+Transition from static data to live data from the new Flask API.
+
+### Tasks:
+
+1. **Coordinate with Team Member A** to get the URL for the new Flask API (e.g., `http://<TEAM_A_IP_ADDRESS>:5000/api/jobs`).
+
+2. **Modify `JobList.jsx` and `ScholarshipList.jsx` components:**
+   - Use the `useEffect` and `useState` hooks to fetch data from the Flask API endpoints when the components load.
+
+3. **Implement loading and error states:**
+   - Implement loading and error states, similar to the `DocumentList` component, to provide good user feedback.
+
+---
+
+## Week 9: Integrate the Query Engine
+
+### Goal:
+Connect the chat interface to the backend's query analyzer.
+
+### Tasks:
+
+1. **Refine the UI of `FederatedChat.jsx`:**
+   - Ensure the chat interface looks clean and is easy to use.
+
+2. **Create a new function in `FederatedChat`** that handles sending a user's query to the backend:
+   - This function will make a POST request to a new endpoint on the Django server (e.g., `/api/query/`), which Team Member A will create.
+
+3. **Modify the POST request:**
+   - The body of the request will contain the user's text, e.g.:
+     ```json
+     {'query': 'show me my jobs'}
+     ```
+
+4. **Update the chat logic**:
+   - Ensure that the results sent back from the backend are displayed correctly in the chat window.
+
+---
+
+## Week 10: Task 2 Evaluation
+
+### Goal:
+Prepare for and present a successful demonstration.
+
+### Tasks:
+
+1. **Ensure the end-to-end flow is working:**
+   - A user should type a query, the frontend sends it to Django, Django runs the analyzer, the analyzer calls the correct API (Django or Flask), and the results are displayed back in the chat window.
+
+2. **Collaborate with Team Member A** to write the user-facing sections of the submission document:
+   - Project statement.
+   - Objectives.
+   - Example queries.
+
+3. **Prepare to demonstrate the project to the TA:**
+   - Be ready to explain your role, the frontend architecture, and how everything integrates.
+

@@ -1,19 +1,41 @@
-# --- Python Virtual Environment ---
-# Ignore the virtual environment folder
-venv/
-__pycache__/
-
-# --- Django Specific ---
-# Ignore the default SQLite database file
-*.sqlite3
-# Ignore user-uploaded media files
-/media/
-
-# --- Environment Variables ---
-# Ignore files containing secret keys, passwords, etc.
-.env
-
-# --- IDE / Editor Folders ---
-# Ignore settings from common editors
+# --- General ---
+# IDE and editor files
 .vscode/
 .idea/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# --- Python / Django ---
+# Virtual environment
+venv/
+/venv/
+__pycache__/
+
+# Django specific
+*.sqlite3
+*.log
+
+# Environment variables
+.env
+
+# --- Node.js / Vite / React ---
+# Node modules
+/frontend/node_modules/
+node_modules/
+
+# Vite build output
+/frontend/dist/
+
+# Logs
+/frontend/npm-debug.log*
+/frontend/yarn-debug.log*
+/frontend/yarn-error.log*
+/frontend/lerna-debug.log*
+
+# Vite cache
+/frontend/.vite/
+
+# Test reports
+/frontend/coverage/
