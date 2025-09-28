@@ -10,7 +10,7 @@ export const JobList = () => {
     const fetchJobs = async () => {
       try {
         // Fetch data from your Flask API
-        const response = await fetch('http://localhost:5000/api/jobs');
+        const response = await fetch('http://192.168.52.109:5000/api/jobs');
         if (!response.ok) {
           throw new Error('Network response was not ok');
         }

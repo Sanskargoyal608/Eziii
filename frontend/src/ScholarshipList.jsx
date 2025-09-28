@@ -9,7 +9,7 @@ export const ScholarshipList = () => {
   useEffect(() => {
     const fetchScholarships = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/scholarships');
+        const response = await fetch('http://192.168.52.109:5000/api/scholarships');
         if (!response.ok) {
           throw new Error('Network response was not ok');
         }
