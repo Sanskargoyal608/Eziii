@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-do
 import styles from './App.module.css';
 import { JobList } from './JobList';
 import { ScholarshipList } from './ScholarshipList';
+import { Home } from './Home';
 
 // --- ICONS ---
 const HomeIcon = () => (
@@ -145,65 +146,6 @@ const FederatedChat = () => {
     );
 };
 
-
-
-// --- HOME COMPONENT ---
-const Home = () => {
-    const [documents, setDocuments] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-
-    useEffect(() => {
-        const fetchDocuments = async () => {
-            try {
-                const response = await fetch('http://127.0.0.1:8000/api/documents/');
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                const data = await response.json();
-                console.log("API Response:", data);
-                setDocuments(data);
-            } catch (error) {
-                console.error("Error fetching documents:", error);
-                setError(error.message);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchDocuments();
-    }, []);
-
-    const getStatusClass = (status) => {
-        switch (status) {
-            case 'Verified': return styles.verified;
-            case 'Pending': return styles.pending;
-            case 'Rejected': return styles.rejected;
-            default: return '';
-        }
-    };
-
-    return (
-        <div className={styles.pageContent}>
-            <h1 className={styles.pageTitle}>My Documents</h1>
-            {loading && <p className={styles.loadingText}>Loading documents...</p>}
-            {error && <p className={styles.errorText}>Failed to load documents: {error}</p>}
-            {!loading && !error && documents.length === 0 && (
-                <p className={styles.emptyMessage}>No documents found. Your database might be empty.</p>
-            )}
-            <div className={styles.documentGrid}>
-                {documents.map(doc => (
-                    <div key={doc.document_id} className={styles.documentCard}>
-                        <h3 className={styles.cardTitle}>{doc.document_type}</h3>
-                        <p className={`${styles.statusBadge} ${getStatusClass(doc.verification_status)}`}>
-                            {doc.verification_status}
-                        </p>
-                        <p className={styles.cardDate}>Issued: {new Date(doc.issue_date).toLocaleDateString()}</p>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
 
 
 // --- APP COMPONENT ---

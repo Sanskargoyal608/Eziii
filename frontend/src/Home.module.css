@@ -1,0 +1,68 @@
+/* Container for the list */
+.listContainer {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+.listTitle {
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: #e5e7eb;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid #4b5563;
+    padding-bottom: 0.75rem;
+}
+
+/* Card for each item */
+.card {
+    background-color: #1f2937; /* gray-800 */
+    border: 1px solid #374151; /* gray-700 */
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.cardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+}
+
+.cardTitle {
+    margin: 0;
+    font-size: 1.25rem;
+    color: #f9fafb; /* gray-50 */
+}
+
+.cardFooter {
+    margin-top: 1rem;
+    font-size: 0.875rem;
+    color: #9ca3af; /* gray-400 */
+}
+
+/* Status badges for documents */
+.statusBadge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+.verified { background-color: #10b981; color: white; }
+.pending { background-color: #f59e0b; color: #1f2937; }
+.rejected { background-color: #ef4444; color: white; }
+
+/* Helper text */
+.errorText {
+    color: #fca5a5; /* red-300 */
+}
+
+.emptyMessage {
+    color: #9ca3af; /* gray-400 */
+    text-align: center;
+    padding: 2rem;
+}
