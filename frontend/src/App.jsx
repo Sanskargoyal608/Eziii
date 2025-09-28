@@ -22,48 +22,84 @@ const AcademicCapIcon = () => (
 );
 
 
-// --- FEDERATED CHAT COMPONENT ---
+
+// --- FEDERATED CHAT COMPONENT --
+
 const FederatedChat = () => {
     const [messages, setMessages] = useState([
-        { id: 1, text: "Welcome! Ask me to find eligible jobs or scholarships based on your verified documents.", sender: 'bot' }
+        { id: 1, text: "Welcome! Select a student and ask a query.", sender: 'bot' }
     ]);
     const [input, setInput] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    
+    // --- NEW: State for students and selected student ---
+    const [students, setStudents] = useState([]);
+    const [selectedStudentId, setSelectedStudentId] = useState('');
+
+    // --- NEW: Fetch the list of students when the component loads ---
+    useEffect(() => {
+        const fetchStudents = async () => {
+            try {
+                const response = await fetch('http://127.0.0.1:8000/api/students/');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch students');
+                }
+                const data = await response.json();
+                setStudents(data);
+                if (data.length > 0) {
+                    setSelectedStudentId(data[0].student_id); // Select the first student by default
+                }
+            } catch (error) {
+                console.error("Error fetching students:", error);
+                // Optionally, add an error message to the chat
+                setMessages(prev => [...prev, {id: Date.now(), text: "Error: Could not load student list.", sender: 'bot'}]);
+            }
+        };
+        fetchStudents();
+    }, []);
 
     const handleSend = async () => {
-        if (input.trim() === '') return;
+        if (input.trim() === '' || isLoading) return;
 
-        // 1. Add user's message immediately
+
         const userMessage = { id: Date.now(), text: input, sender: 'user' };
-        // 2. Add a "thinking" message from the bot
-        const thinkingMessage = { id: Date.now() + 1, text: "Query received. Decomposing and fetching from sources...", sender: 'bot' };
-        
-        setMessages(prev => [...prev, userMessage, thinkingMessage]);
+        setMessages(prev => [...prev, userMessage]);
         setInput('');
+        setIsLoading(true);
 
         try {
-            // 3. Send the query to the federated engine endpoint on your partner's machine
-            const response = await fetch('http://192.168.52.110:8000/api/federated-query/', {
+            // Make a REAL API call to your Django federated query endpoint
+            const response = await fetch('http://127.0.0.1:8000/api/federated-query/', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ query: input }),
+
+                // --- UPDATED: Send the selected student ID along with the query ---
+                body: JSON.stringify({ 
+                    query: input,
+                    student_id: selectedStudentId 
+                }),
             });
 
             if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
+                throw new Error('Network response was not ok');
             }
 
             const data = await response.json();
             
-            // 4. Replace "thinking..." with the actual response
-            const botResponse = { id: Date.now() + 2, text: JSON.stringify(data, null, 2), sender: 'bot' };
-            setMessages(prev => [...prev.slice(0, -1), botResponse]);
+
+            const botResponseText = JSON.stringify(data, null, 2);
+
+            const botMessage = { id: Date.now() + 1, text: botResponseText, sender: 'bot' };
+            setMessages(prev => [...prev, botMessage]);
 
         } catch (error) {
             console.error("Error during federated query:", error);
-            const errorMessage = { id: Date.now() + 2, text: `Error: Could not connect to the federated engine. ${error.message}`, sender: 'bot' };
-            setMessages(prev => [...prev.slice(0, -1), errorMessage]);
+            const errorMessage = { id: Date.now() + 1, text: `Error: ${error.message}`, sender: 'bot' };
+            setMessages(prev => [...prev, errorMessage]);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -72,28 +108,43 @@ const FederatedChat = () => {
             <div className={styles.messageList}>
                 {messages.map((msg) => (
                     <div key={msg.id} className={`${styles.message} ${msg.sender === 'user' ? styles.userMessage : styles.botMessage}`}>
-                        {/* Use <pre> for formatted JSON */}
-                        {msg.sender === 'bot' && msg.text.startsWith('{') ? 
-                            <pre>{msg.text}</pre> : msg.text}
+
+                        <pre className={styles.preformatted}>{msg.text}</pre>
                     </div>
                 ))}
             </div>
-            <div className={styles.inputArea}>
-                <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                    placeholder="Type your query here..."
-                    className={styles.textInput}
-                />
-                <button onClick={handleSend} className={styles.sendButton}>
-                    <SendIcon />
-                </button>
+            {/* --- NEW: Student selection dropdown --- */}
+            <div className={styles.chatControls}>
+                <select 
+                    value={selectedStudentId} 
+                    onChange={(e) => setSelectedStudentId(e.target.value)}
+                    className={styles.studentSelector}
+                >
+                    <option value="" disabled>Select a Student</option>
+                    {students.map(student => (
+                        <option key={student.student_id} value={student.student_id}>
+                            {student.full_name}
+                        </option>
+                    ))}
+                </select>
+                <div className={styles.inputArea}>
+                    <input
+                        type="text"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                        placeholder="Type your query here..."
+                        className={styles.textInput}
+                    />
+                    <button onClick={handleSend} className={styles.sendButton} disabled={isLoading}>
+                        <SendIcon />
+                    </button>
+                </div>
             </div>
         </div>
     );
 };
+
 
 
 // --- HOME COMPONENT ---
@@ -109,32 +160,44 @@ const Home = () => {
                 if (!response.ok) {
                     throw new Error('Network response was not ok');
                 }
-                return response.json();
-            })
-            .then(data => {
+                const data = await response.json();
+                console.log("API Response:", data);
                 setDocuments(data);
-                setLoading(false);
-            })
-            .catch(error => {
+            } catch (error) {
                 console.error("Error fetching documents:", error);
-                setError("Failed to load documents. Make sure your Django server is running.");
+                setError(error.message);
+            } finally {
                 setLoading(false);
-            });
-    }, []); // The empty array means this effect runs once when the component mounts
+            }
+        };
+        fetchDocuments();
+    }, []);
+
+    const getStatusClass = (status) => {
+        switch (status) {
+            case 'Verified': return styles.verified;
+            case 'Pending': return styles.pending;
+            case 'Rejected': return styles.rejected;
+            default: return '';
+        }
+    };
 
     return (
         <div className={styles.pageContent}>
-            <h1>My Documents</h1>
-            {loading && <p>Loading documents...</p>}
-            {error && <p className={styles.errorText}>{error}</p>}
+            <h1 className={styles.pageTitle}>My Documents</h1>
+            {loading && <p className={styles.loadingText}>Loading documents...</p>}
+            {error && <p className={styles.errorText}>Failed to load documents: {error}</p>}
+            {!loading && !error && documents.length === 0 && (
+                <p className={styles.emptyMessage}>No documents found. Your database might be empty.</p>
+            )}
             <div className={styles.documentGrid}>
                 {documents.map(doc => (
                     <div key={doc.document_id} className={styles.documentCard}>
-                        <h3 className={styles.documentTitle}>{doc.document_type}</h3>
-                        <p className={`${styles.status} ${styles[doc.verification_status.toLowerCase()]}`}>
+                        <h3 className={styles.cardTitle}>{doc.document_type}</h3>
+                        <p className={`${styles.statusBadge} ${getStatusClass(doc.verification_status)}`}>
                             {doc.verification_status}
                         </p>
-                        <p className={styles.issueDate}>Issued: {new Date(doc.issue_date).toLocaleDateString()}</p>
+                        <p className={styles.cardDate}>Issued: {new Date(doc.issue_date).toLocaleDateString()}</p>
                     </div>
                 ))}
             </div>
@@ -150,9 +213,9 @@ function App() {
             <div className={styles.appContainer}>
                 <aside className={styles.sidebar}>
                     <div className={styles.sidebarHeader}>
-                        <h2 className={styles.sidebarTitle}>Dashboard</h2>
+                        <h2 className={styles.sidebarTitle}>EduVerify</h2>
                     </div>
-                    <nav className={styles.nav}>
+                    <nav className={styles.sidebarNav}>
                         <NavLink to="/" className={({ isActive }) => isActive ? `${styles.navLink} ${styles.activeLink}` : styles.navLink}>
                             <HomeIcon />
                             <span>Home</span>

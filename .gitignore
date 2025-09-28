@@ -17,7 +17,7 @@ __pycache__/
 *.sqlite3
 *.log
 
-# Environment variables
+# Environment variables - IMPORTANT
 .env
 
 # --- Node.js / Vite / React ---
