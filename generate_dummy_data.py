@@ -8,19 +8,14 @@ from django.contrib.auth.hashers import make_password
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'eduverify_backend.settings')
 django.setup()
 
-from core.models import Student, Document, GovtJob, Scholarship, Skill, StudentSkill
+from core.models import Student, Document
 
 fake = Faker()
 
 def clear_data():
     """Deletes all existing data from the models."""
     print("Deleting old data...")
-    # Delete in an order that respects foreign key constraints
-    StudentSkill.objects.all().delete()
-    Skill.objects.all().delete()
     Document.objects.all().delete()
-    GovtJob.objects.all().delete()
-    Scholarship.objects.all().delete()
     Student.objects.all().delete()
     print("Old data deleted.")
 
@@ -30,14 +25,11 @@ def generate_students(num_students=150):
     students = []
     for _ in range(num_students):
         profile = fake.profile()
-        hashed_password = make_password('password123') # Generic password for all
+        hashed_password = make_password('password123')
         
-        # Define profile details to be stored in the JSON field
         profile_details = {
             'address': profile['address'],
             'birthdate': str(profile['birthdate']),
-            'company': profile['company'],
-            'job': profile['job'],
             'income_pa': random.choice([150000, 200000, 250000, 300000, 400000, 500000, 800000, 1000000]),
             'phone_number': fake.phone_number()
         }
@@ -52,70 +44,53 @@ def generate_students(num_students=150):
     return students
 
 def generate_documents(students_list):
-    """Generates documents for each student."""
+    """
+    Generates a more realistic set of documents for each student, ensuring
+    key qualifications are present and verified for eligibility checks.
+    """
     print("Generating documents...")
-    doc_types = ['10th Marksheet', '12th Marksheet', 'B.Tech Certificate', 'Diploma Certificate', 'Income Certificate', 'Aadhar Card']
-    statuses = ['Verified', 'Pending', 'Rejected']
+    doc_types = ['10th Marksheet', '12th Marksheet', 'Aadhar Card']
+    degree_types = ['B.Tech Certificate', 'Diploma Certificate']
 
     for student in students_list:
-        num_docs = random.randint(3, 7)
-        for _ in range(num_docs):
-            doc_type = random.choice(doc_types)
-            status = random.choice(statuses)
-            issue_date = fake.date_between(start_date='-5y', end_date='today')
-            
-            verified_data = None
-            if status == 'Verified':
-                if 'Marksheet' in doc_type or 'Certificate' in doc_type:
-                    verified_data = {'percentage': round(random.uniform(60.0, 95.0), 2)}
-                elif 'Income' in doc_type:
-                     verified_data = {'income': student.profile_details.get('income_pa')}
+        # --- NEW LOGIC: Ensure every student has key verified documents ---
+        
+        # 1. Add a verified degree certificate for eligibility
+        degree_to_add = random.choice(degree_types)
+        Document.objects.create(
+            student=student,
+            document_type=degree_to_add,
+            verification_status='Verified',
+            issue_date=fake.date_between(start_date='-4y', end_date='-1y'),
+            verified_data={'percentage': round(random.uniform(70.0, 95.0), 2)}
+        )
 
+        # 2. Add a verified income certificate for eligibility
+        Document.objects.create(
+            student=student,
+            document_type='Income Certificate',
+            verification_status='Verified',
+            issue_date=fake.date_between(start_date='-1y', end_date='today'),
+            verified_data={'income': student.profile_details.get('income_pa')}
+        )
+
+        # 3. Add a few other random documents for variety
+        for _ in range(random.randint(2, 4)):
             Document.objects.create(
                 student=student,
-                document_type=doc_type,
-                verification_status=status,
-                issue_date=issue_date,
-                verified_data=verified_data
+                document_type=random.choice(doc_types),
+                verification_status=random.choice(['Verified', 'Pending', 'Rejected']),
+                issue_date=fake.date_between(start_date='-5y', end_date='today'),
+                verified_data=None 
             )
             
-def generate_jobs(num_jobs=75):
-    """Generates fake government job postings."""
-    print(f"Generating {num_jobs} jobs...")
-    degrees = ['B.Tech', 'Diploma', 'B.Sc', 'M.Tech']
-    for _ in range(num_jobs):
-        GovtJob.objects.create(
-            job_title=fake.job() + " (Government Sector)",
-            job_description=fake.paragraph(nb_sentences=5),
-            eligibility_criteria={
-                'degree_required': random.choice(degrees),
-                'min_cgpa': round(random.uniform(6.0, 8.0), 1)
-            },
-            source_url=fake.url()
-        )
-
-def generate_scholarships(num_scholarships=50):
-    """Generates fake scholarship opportunities."""
-    print(f"Generating {num_scholarships} scholarships...")
-    for _ in range(num_scholarships):
-        Scholarship.objects.create(
-            scholarship_name=f"{fake.company()} Educational Scholarship", # CORRECTED from 'name'
-            description=fake.paragraph(nb_sentences=4),
-            eligibility_criteria={
-                'min_percentage': random.randint(75, 90),
-                'max_income_pa': random.choice([250000, 500000, 800000])
-            },
-            amount=random.randint(5000, 50000)
-        )
-
 def main():
     """Main function to run the seeding process."""
     clear_data()
     students_list = generate_students()
     generate_documents(students_list)
-    generate_jobs()
-    generate_scholarships()
-    print("✅ Database seeding successful!")
+    print("✅ Database seeding successful with improved data!")
 
 if __name__ == '__main__':
     main()
+
