@@ -1,91 +1,145 @@
-# Frontend Lead & Secondary Backend Developer Tasks
+# Frontend Lead (React/Vite) & Secondary Data Source Lead (Flask, SQLite, Scraping)
 
-This document outlines your updated tasks, which now include backend responsibilities.
-
-### Technology Stack:
-- **Frontend**: React, Vite, CSS Modules
-- **Backend**: Python, Flask, SQLite
+## Overall Goal
+Build the student-facing React portal, implement real-data scraping for jobs/scholarships, and maintain the secondary Flask API.
 
 ---
 
-## Weeks 1-6: Foundation (COMPLETE)
+## Week 10: Scraping Setup & Flask API Update
 
-### Recap:
-- The frontend project is stable on Vite and CSS Modules.
-- It is successfully displaying document data fetched from your partner's Django API.
+**Goal:** Set up scraping and update Flask API with initial scraped data.  
+**Branch:** feature/real-data-scraping from main.
 
----
+### Tasks
 
-## Week 7: Set Up the Second Data Source (Your Backend)
+- [ ] Research and choose 2-3 reliable government/job/scholarship websites for scraping.  
+- [ ] Set up Python environment for scraping (install requests, beautifulsoup4, potentially scrapy).  
+- [ ] Write initial scraping scripts to get bashic info (e.g., job titles, scholarship names, URLs).  
+- [ ] Adapt Flask API to read data from SQLite DB populated by the scraper (instead of dummy data).  
+- [ ] Ensure `/api/jobs` and `/api/scholarships` endpoints return JSON matching the exact API contract provided by the partner (fields like `description` and `eligibility`).  
+- [ ] Run your Flask server:
 
-### Goal:
-On your own machine, create and populate the separate SQLite database for jobs and scholarships.
+```bash
+flask run --host=0.0.0.0
+```
 
-### Tasks:
+- [ ] Test your API locally (using curl or Postman).  
 
-1. **Install Python and pip** on your machine if you haven’t already.
-
-2. **Run the setup script provided by your partner**:
-   - Your partner will provide a Python script named `setup_sqlite.py`.
-   - Run this script on your computer to create the `federated_data.db` file, which will be your SQLite database.
-
-3. **Populate the SQLite database**:
-   - Your partner will also provide an updated `generate_dummy_data.py` script.
-   - Run the specific function from this script to populate the `federated_data.db` with `GovtJob` and `Scholarship` data.
-
-4. **Frontend Task**:
-   - Continue your frontend work by building the static (hard-coded) components for **JobList.jsx** and **ScholarshipList.jsx** using **CSS Modules**.
-   - For now, populate these components with fake data to display job and scholarship information.
+**GitHub:**
+```bash
+git push origin feature/real-data-scraping
+```
 
 ---
 
-## Week 8: Build the Secondary API (Your Backend)
+## Week 11: Frontend Authentication & Document Upload UI
 
-### Goal:
-Create a simple Flask API on your machine to serve data from your SQLite database.
+**Goal:** Build the login/registration UI and the document upload form.  
+**Branch:** feature/student-auth-frontend from main.
 
-### Tasks:
+### Tasks
 
-1. **Install Flask**:
-   - Install Flask and Flask-CORS: 
-     ```bash
-     pip install Flask Flask-Cors
-     ```
+- [ ] Create React components for Login and Registration forms.  
+- [ ] Implement API calls to the Django backend for login/registration.  
+- [ ] Implement JWT token storage (e.g., in localStorage) and retrieval.  
+- [ ] Set up bashic authenticated routing (redirect to login if no token).  
 
-2. **Create the Flask API**:
-   - Create a new file named `federated_api.py`.
+**GitHub:**
+```bash
+git push origin feature/student-auth-frontend
+```
 
-3. **Build the Flask App**:
-   - Connect the Flask app to your `federated_data.db` SQLite database.
-   - Create two API endpoints:
-     - `/api/jobs`: Queries the `govt_jobs` table and returns the results as JSON.
-     - `/api/scholarships`: Queries the `scholarships` table and returns the results as JSON.
+**Branch:** feature/doc-upload-ui from feature/student-auth-frontend.
 
-4. **Configure CORS**:
-   - Configure CORS on your Flask app to allow requests from your React frontend (e.g., `http://localhost:5173`).
+### Tasks
 
-5. **Run the Flask Server**:
-   - Run the Flask server on your local machine.
+- [ ] Create React component for document upload form (category selection, file input, text input for Govt ID).  
+- [ ] Implement API call (POST) to `/api/documents/upload/`, sending form data and JWT token in headers.  
 
----
-
-## Week 9: Connect Frontend & Integrate
-
-### Goal:
-Connect your React components to your new Flask API and prepare for the final demonstration.
-
-### Tasks:
-
-1. **Modify the `JobList.jsx` and `ScholarshipList.jsx` components**:
-   - Update these components to fetch data from your local Flask API endpoints (e.g., `http://localhost:5000/api/jobs`).
-
-2. **Federated Query Integration**:
-   - Work with your partner to integrate the federated query engine.
-   - Modify the `FederatedChat` component to send user queries to a new endpoint on your partner's Django server.
-
-3. **Display Results in Chat**:
-   - Display the results returned by the federated query engine in the chat window.
+**GitHub:**
+```bash
+git push origin feature/doc-upload-ui
+```
 
 ---
 
-This document clearly outlines your tasks for the upcoming weeks as both a frontend lead and a secondary backend developer. Let me know if you'd like to adjust or add anything!
+## Week 12: Core Frontend Pages
+
+**Goal:** Build the main data display pages.  
+
+**GitHub:**
+```bash
+git checkout main
+git pull origin main
+git merge feature/student-auth-frontend
+git push origin main
+```
+
+**Branch:** feature/core-pages from main.
+
+### Tasks
+
+- [ ] Create React components/pages for displaying Jobs and Scholarships.  
+- [ ] Implement fetch calls to Flask API endpoints (`/api/jobs`, `/api/scholarships`).  
+- [ ] Modify Home component to fetch documents belonging to the logged-in user (send JWT token).  
+- [ ] Add UI for selecting documents for PDF generation.  
+- [ ] Implement API call (POST) to `/api/generate-pdf/`, sending selected document IDs and JWT token.  
+
+**GitHub:**
+```bash
+git push origin feature/core-pages
+```
+
+---
+
+## Week 13: Advanced Scraping
+
+**Goal:** Enhance scraping scripts to extract more detailed, structured data.  
+**Branch:** Continue on feature/real-data-scraping.
+
+### Tasks
+
+- [ ] Refine scrapers to handle potential PDF downloads and extract text.  
+- [ ] Use regex or rules to parse eligibility criteria (e.g., CGPA, income limit).  
+- [ ] Update SQLite schema if needed to store structured data.  
+- [ ] Update Flask API to serve richer data while keeping API contract consistent.  
+
+**GitHub:**
+```bash
+git push origin feature/real-data-scraping
+```
+
+---
+
+## Week 14: Final Integration & Testing
+
+**Goal:** Merge all features and ensure the system works end-to-end.  
+
+**GitHub:**
+```bash
+git checkout main
+git pull origin main
+```
+
+### Tasks
+
+- [ ] Coordinate with partner to merge all branches: `doc-upload-ui`, `core-pages`, `real-data-scraping`, and partner’s backend features.  
+- [ ] Test all major flows: login, document upload, job/scholarship display, PDF generation, chat queries.  
+- [ ] Fix UI bugs and API connection issues.  
+
+**GitHub:**  
+All work now happens on `main`. Push frequently.
+
+---
+
+## Weeks 15–16: Paper, Poster & Submission
+
+**Goal:** Finalize academic deliverables.
+
+### Tasks
+
+- [ ] Collaborate with partner on the final report (`iia_main.tex`).  
+- [ ] Focus on frontend implementation, scraping, Flask API, and results sections.  
+- [ ] Prepare poster content related to frontend and data scraping.  
+- [ ] Ensure all code (React, Flask, Scrapers) is clean and commented.  
+- [ ] Prepare the final ZIP submission.

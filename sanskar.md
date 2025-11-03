@@ -1,109 +1,128 @@
-# Backend Lead, Database Administrator, Federated Engine Architect Tasks
+# Backend Lead (Django, PostgreSQL, Query Engine, LLM Integration)
 
-This document outlines your specific tasks based on the corrected distributed architecture.
-
-### Technology Stack:
-- **Python**
-- **Django**
-- **PostgreSQL**
+## Overall Goal
+Build the secure backend infrastructure for the student portal, implement document processing logic, enhance the federated query engine, and manage integrations.
 
 ---
 
-## Weeks 1-6: Foundation (COMPLETE)
+## Week 10: Authentication Backend
 
-### Recap:
-- You have a working Django backend with a populated PostgreSQL database and a document API.
-- Your system is the **primary data source**.
+**Goal:** Implement secure user login/registration.  
+**Branch:** feature/student-auth-backend from main.
 
----
+### Tasks
 
-## Week 7: Configure for Remote Access
+- [ ] Implement Django models/views for user registration (Email/Password).  
+- [ ] Set up JWT authentication (using `djangorestframework-simplejwt`).  
+- [ ] Create login endpoint that returns a JWT token.  
+- [ ] Modify existing API endpoints (e.g., `/api/documents/`) to require JWT authentication.  
 
-### Goal:
-Allow your partner's applications (both his React frontend and his future Flask API) to connect to your PostgreSQL database over the network.
-
-### Tasks:
-
-1. **Locate Config Files:**
-   - Find the following configuration files in your PostgreSQL data directory (e.g., `C:\Program Files\PostgreSQL\<VERSION>\data\`):
-     - `postgresql.conf`
-     - `pg_hba.conf`
-
-2. **Edit `postgresql.conf`:**
-   - Change:
-     ```conf
-     listen_addresses = 'localhost'
-     ```
-     to:
-     ```conf
-     listen_addresses = '*'
-     ```
-
-3. **Edit `pg_hba.conf`:**
-   - Add a new line at the bottom to allow your partner's IP address to connect. You will need to ask your partner for his local IP.
-     ```conf
-     # TYPE  DATABASE    USER      ADDRESS                          METHOD
-     host    all         all       <YOUR_PARTNER_IP_ADDRESS>/32      md5
-     ```
-
-4. **Restart PostgreSQL Server:**
-   - Use the "Services" app in Windows to restart the PostgreSQL service.
-
-5. **Configure Windows Firewall:**
-
-   - Open "Windows Defender Firewall with Advanced Security".
-   - Create a new "Inbound Rule":
-     - **Rule Type:** Port
-     - **Protocol and Ports:** TCP, Specific local ports: 5432
-     - **Action:** Allow the connection
-     - **Profile:** Keep all checked
-     - **Name:** "PostgreSQL Project Access"
-
-6. **Provide Connection Details:**
-   - Give your partner your local IP address, PostgreSQL username, and password so he can test the connection.
+**GitHub:**
+```bash
+git push origin feature/student-auth-backend
+```
 
 ---
 
-## Week 8: Build the Query Decomposer
+## Week 11: Document Processing Backend
 
-### Goal:
-Build the initial version of the core query analysis and decomposition logic.
+**Goal:** Handle document uploads and bashic text extraction.  
+**Branch:** feature/doc-processing-backend from main.
 
-### Tasks:
+### Tasks
 
-1. **Work primarily in the `query_analyzer.py` script**:
-   - Create a function that accepts a text query as input (e.g., "show me scholarships").
+- [ ] Create a Django API endpoint (POST `/api/documents/upload/`) to accept file uploads (PDF/Image) and document IDs.  
+- [ ] Implement secure file saving logic.  
+- [ ] Research and integrate Python libraries for OCR/text extraction (`pytesseract`, `PyPDF2`).  
+- [ ] Implement logic to extract text from uploaded files.  
+- [ ] Update the Document model (add `extracted_text` and `file_path` fields). Run migrations.  
 
-2. **Implement a simple keyword-based logic** to decide which data source to target:
-   - **Keywords like** "job", "career" -> Target **Partner's Flask API**.
-   - **Keywords like** "scholarship", "fund" -> Target **Partner's Flask API**.
-   - **Keywords like** "document", "certificate" -> Target your own **Django API**.
-
-3. **Output Example**:
-   - Your script’s output should be a plan, such as:
-     ```python
-     {'target_api': 'http://<PARTNER_IP>:5000/api/scholarships'}
-     ```
+**GitHub:**
+```bash
+git push origin feature/doc-processing-backend
+```
 
 ---
 
-## Week 9: Implement Query Execution
+## Week 12: Core Logic & PDF Generation Backend
 
-### Goal:
-Enhance the analyzer to execute the query plan.
+**Goal:** Integrate document data into eligibility and add PDF feature.  
 
-### Tasks:
+**GitHub:**
+```bash
+git checkout main
+git pull origin main
+git merge feature/student-auth-backend
+git push origin main
+```
 
-1. **Enhance the `query_analyzer.py` script**:
-   - Add logic to use a library like `requests` to make an actual API call to the target URL identified in Week 8.
+**Branch:** feature/recommendation-logic from main.
 
-2. **Create a new endpoint in your Django application**:
-   - Endpoint: `/api/federated-query/`
-   - This endpoint should:
-     - Receive a query from the frontend.
-     - Run your `query_analyzer.py` script.
-     - Return the final result (e.g., from your Django API or your partner's Flask API).
+### Tasks
+
+- [ ] Enhance `get_student_qualifications` to use `extracted_text` (if feasible).  
+- [ ] Refine `execute_query_plan` filtering bashed on richer document data.  
+- [ ] Create an API endpoint (POST `/api/generate-pdf/`) to accept a list of document IDs.  
+- [ ] Implement PDF generation using `reportlab` (combine text and metadata).  
+
+**GitHub:**
+```bash
+git push origin feature/recommendation-logic
+```
 
 ---
 
-This document outlines your tasks and provides a structured approach to ensure that all backend responsibilities are met for the project. Let me know if you'd like to adjust anything or add more details!
+## Week 13: Chat Enhancements
+
+**Goal:** Make the chat responses more natural and intelligent.  
+**Branch:** feature/chat-enhancements from main.
+
+### Tasks
+
+- [ ] Refine the LLM prompt in `analyze_and_decompose_query_with_llm` for better conversational understanding.  
+- [ ] Modify `execute_query_plan` to:
+  - Send structured results + original query to Gemini.
+  - Generate a human-like summary/answer instead of raw JSON.  
+- [ ] Research/Implement logic for calculating eligibility chance percentage.  
+
+**GitHub:**
+```bash
+git push origin feature/chat-enhancements
+```
+
+---
+
+## Week 14: Final Integration & Testing
+
+**Goal:** Merge all features and ensure the system works end-to-end.  
+
+**GitHub:**
+```bash
+git checkout main
+git pull origin main
+```
+
+### Tasks
+
+- [ ] Coordinate with partner to merge all remaining feature branches:  
+  `doc-processing-backend`, `recommendation-logic`, `chat-enhancements`,  
+  and partner’s `core-pages`, `doc-upload-ui`, `real-data-scraping`.  
+- [ ] Thoroughly test login, document upload, data display, PDF generation, and chat queries.  
+- [ ] Debug issues found during integration testing.  
+
+**GitHub:**  
+All work now happens on `main`. Push frequently.
+
+---
+
+## Weeks 15–16: Paper, Poster & Submission
+
+**Goal:** Finalize academic deliverables.
+
+### Tasks
+
+- [ ] Collaborate with partner on writing the final report (`iia_main.tex`).  
+  Focus on backend architecture, algorithms, LLM integration, and innovation sections.  
+- [ ] Prepare content for the poster presentation related to the backend.  
+- [ ] Ensure all code (`Django app`, `query_analyzer.py`) is clean and commented.  
+- [ ] Prepare the final ZIP submission.
