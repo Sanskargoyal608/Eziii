@@ -1,5 +1,5 @@
 from django.db import models
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import make_password, check_password
 
 # This file contains the "blueprint" for your database.
 # Each class represents a table, and each attribute represents a column.
@@ -16,6 +16,10 @@ class Student(models.Model):
         if self.password and not self.password.startswith(('pbkdf2_sha256$', 'bcrypt$', 'argon2')):
             self.password = make_password(self.password)
         super().save(*args, **kwargs)
+    
+    def check_password(self, raw_password):
+        return check_password(raw_password, self.password)
+
 
     class Meta:
         db_table = 'students' # Explicitly name the table
