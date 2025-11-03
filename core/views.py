@@ -83,6 +83,7 @@ class DocumentListView(APIView):
         documents = Document.objects.filter(student=request.user)
         serializer = DocumentSerializer(documents, many=True)
         return Response(serializer.data)
+    
 class DocumentUploadView(APIView):
     permission_classes = [IsAuthenticated] # This now works
     

@@ -26,6 +26,33 @@ class Student(models.Model):
 
     def __str__(self):
         return self.full_name
+    
+    @property
+    def is_authenticated(self):
+        """Always return True for a Student object."""
+        return True
+
+    @property
+    def is_anonymous(self):
+        """Always return False for a Student object."""
+        return False
+
+    @property
+    def is_active(self):
+        """Assume all students in the DB are active."""
+        return True
+    # --- END OF FIX ---
+
+    class Meta:
+        db_table = 'students'
+
+    def __str__(self):
+        return self.full_name
+    
+# --- (Rest of your models: Document, GovtJob, etc.) ---
+# ... (all the code from before) ...
+
+
 
 class Document(models.Model):
     document_id = models.AutoField(primary_key=True)
@@ -90,4 +117,7 @@ class Scholarship(models.Model):
 
     def __str__(self):
         return self.scholarship_name
+    
+
+
 
