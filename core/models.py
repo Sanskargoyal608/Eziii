@@ -26,11 +26,16 @@ class Student(models.Model):
 class Document(models.Model):
     document_id = models.AutoField(primary_key=True)
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    document_type = models.CharField(max_length=50)
+    document_type = models.CharField(max_length=100)
     verification_status = models.CharField(max_length=20, default='Pending')
-    # ADD THIS LINE:
     issue_date = models.DateField(null=True, blank=True)
     verified_data = models.JSONField(null=True, blank=True)
+    
+    # --- NEW FIELDS ---
+    # Stores the path to the uploaded file (e.g., "uploads/student_1/aadhar.pdf")
+    uploaded_file = models.FileField(upload_to='uploads/', null=True, blank=True)
+    # Stores the text extracted by OCR/PDF-parsing
+    extracted_text = models.TextField(null=True, blank=True)
 
     class Meta:
         db_table = 'documents'
