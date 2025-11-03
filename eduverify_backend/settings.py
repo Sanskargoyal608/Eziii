@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -163,3 +164,9 @@ SIMPLE_JWT = {
     # 2. Tells the token to store the ID under the claim 'student_id'
     'USER_ID_CLAIM': 'student_id',
 }
+MEDIA_URL = '/media/'
+
+# This is the absolute path on your hard drive where files will be saved
+# os.path.join(BASE_DIR, 'media') means it will create a 'media' folder
+# in your main project directory (E:\Ezii\media)
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

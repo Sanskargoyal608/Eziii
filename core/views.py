@@ -3,7 +3,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated # Import permissions
 from .models import Document, Student
-from .serializers import DocumentSerializer, StudentSerializer , StudentRegistrationSerializer
+from rest_framework.permissions import AllowAny, IsAuthenticated 
+from rest_framework.parsers import MultiPartParser, FormParser
+from .serializers import DocumentSerializer, StudentSerializer , DocumentUploadSerializer, StudentRegistrationSerializer
+from .utils import extract_text_from_file
+
 
 # Import the correct function from your query_analyzer
 from query_analyzer import analyze_and_decompose_query_with_llm, execute_query_plan
@@ -79,6 +83,34 @@ class DocumentListView(APIView):
         documents = Document.objects.filter(student=request.user)
         serializer = DocumentSerializer(documents, many=True)
         return Response(serializer.data)
+class DocumentUploadView(APIView):
+    permission_classes = [IsAuthenticated] # This now works
+    
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, format=None):
+        print(f"Document upload request received for user: {request.user.full_name}")
+        
+        serializer = DocumentUploadSerializer(data=request.data, context={'request': request})
+        
+        if serializer.is_valid():
+            document = serializer.save()
+            
+            if document.uploaded_file:
+                file_relative_path = document.uploaded_file.name
+                extracted_text = extract_text_from_file(file_relative_path)
+                
+                if extracted_text:
+                    document.extracted_text = extracted_text
+                    document.save()
+                    print("Extracted text saved to document.")
+            
+            return Response(DocumentSerializer(document).data, status=status.HTTP_201_CREATED)
+        
+        print(f"Serializer errors: {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 
 class FederatedQueryView(APIView):
     # This view now requires a valid JWT token
