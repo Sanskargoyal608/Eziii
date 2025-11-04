@@ -120,24 +120,24 @@ class DocumentUploadView(APIView):
 
 
 class FederatedQueryView(APIView):
-    # This view now requires a valid JWT token
     permission_classes = [IsAuthenticated]
 
     def post(self, request, format=None):
         query = request.data.get('query')
-        
-        # --- NEW: Get student_id from the authenticated user token ---
-        # We no longer trust the student_id from the frontend dropdown,
-        # we use the one from the token.
-        student_id = request.user.student_id
+        student_id = request.user.student_id 
 
         if not query:
             return Response({"error": "No query provided."}, status=status.HTTP_400_BAD_REQUEST)
 
         plan = analyze_and_decompose_query_with_llm(query)
-        results = execute_query_plan(plan, student_id=student_id)
+        
+        # --- THIS IS THE CHANGE ---
+        # We now pass the original query text along with the plan
+        results = execute_query_plan(plan, student_id=student_id, original_query=query)
         
         return Response(results)
+
+
     
 
 class GeneratePDFView(APIView):

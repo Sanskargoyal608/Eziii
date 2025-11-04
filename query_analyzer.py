@@ -13,6 +13,66 @@ load_dotenv()
 PARTNER_IP = "192.168.1.107"  # Replace with your partner's actual local IP
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+def summarize_results_with_llm(results, original_query):
+    """
+    Takes the structured JSON results and the user's query,
+    and returns a human-readable text response.
+    """
+    print("--- Summarizing results with LLM ---")
+    if not GEMINI_API_KEY:
+        return {"error": "LLM not configured for summarization."}
+
+    # Convert the structured results to a string
+    results_string = json.dumps(results, indent=2)
+
+    prompt = f"""
+    You are a helpful student career advisor. Your job is to answer a user's question in a clear, friendly, and conversational way.
+    You will be given the user's original question and a JSON object containing the data you need to answer it.
+
+    User's Original Question:
+    "{original_query}"
+
+    Data to Use (JSON):
+    {results_string}
+
+    Instructions:
+    1. Analyze the user's question and the provided data.
+    2. Formulate a single, concise, human-readable response.
+    3. If the data contains an error message, explain the error politely.
+    4. If the data is an empty list (like `[]`), inform the user that no items were found.
+    5. Do not just repeat the JSON. Summarize it.
+
+    Example:
+    If the data is {{"jobs": [{{"job_title": "Data Analyst"}}]}},
+    your response should be: "Based on your qualifications, I found one job you are eligible for: 'Data Analyst'."
+
+    Example:
+    If the data is {{"documents": []}},
+    your response should be: "I checked your profile, but it looks like you haven't uploaded any documents that match that description yet."
+    
+    Now, please generate the response for the given data and query.
+
+    Your Answer:
+    """
+
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+    try:
+        response = requests.post(api_url, json=payload, timeout=20)
+        response.raise_for_status()
+        result = response.json()
+        
+        # Extract the text and wrap it in a simple JSON for the frontend
+        text_response = result['candidates'][0]['content']['parts'][0]['text']
+        return {"response_text": text_response}
+    
+    except Exception as e:
+        print(f"ERROR: LLM Summarization failed. {e}")
+        return {"response_text": f"Sorry, I encountered an error while processing the results: {e}"}
+
+
+
 # --- NEW: LLM Helper for parsing extracted text ---
 def parse_qualifications_from_text(text, doc_type):
     """
@@ -236,17 +296,21 @@ def filter_items_with_llm(items, qualifications, item_type):
         print(f"ERROR: LLM batch filtering failed. {e}")
         return {"error": f"LLM filtering process failed: {e}"}
 
-# --- (execute_query_plan function remains the same) ---
-def execute_query_plan(plan, student_id=None):
+# --- UPDATED: execute_query_plan ---
+def execute_query_plan(plan, student_id=None, original_query=""):
     """
-    Executes all intents in the query plan using the new batch filtering method.
+    Executes all intents in the query plan, then sends the final
+    results to the LLM for summarization.
     """
     print(f"--- Executing Full Query Plan (Context: student_id={student_id}) ---")
     
     if "error" in plan:
-        return {"error": f"LLM Decomposition Error: {plan['error']}"}
+        return summarize_results_with_llm(plan, original_query) # Let LLM explain the error
     if not plan.get("intents"): 
-        return {"message": "I'm sorry, I couldn't understand that request. Please ask about jobs, scholarships, or your documents."}
+        return summarize_results_with_llm(
+            {"message": "I'm sorry, I couldn't understand that request. Please ask about jobs, scholarships, or your documents."},
+            original_query
+        )
     
     final_results = {}
     if not student_id and plan.get("user_name"):
@@ -255,6 +319,101 @@ def execute_query_plan(plan, student_id=None):
             student_id = student.student_id
         except Student.DoesNotExist: pass
     
+    qualifications = get_student_qualifications(student_id) if student_id else {}
+
+    # --- (This whole loop for intents is the same as before) ---
+    for intent_data in plan["intents"]:
+        intent = intent_data.get("target")
+        params = intent_data.get("params", {})
+        
+        if intent == "GET_JOBS":
+            # ... (code for GET_JOBS as before, using batch filtering) ...
+            endpoint = f'http://{PARTNER_IP}:5000/api/jobs'
+            try:
+                print(f"Making REAL API call for all jobs to: {endpoint}")
+                response = requests.get(endpoint, timeout=10)
+                response.raise_for_status()
+                all_jobs = response.json()
+                if params.get("aggregate") == "count":
+                    final_results['jobs_count'] = {"count": len(all_jobs)}
+                elif params.get("filter_by_eligibility") and student_id:
+                    if not qualifications.get('degrees'):
+                         final_results['jobs'] = {"message": "Cannot check job eligibility: No verified degree found."}
+                         continue
+                    eligible_jobs = filter_items_with_llm(all_jobs, qualifications, 'jobs')
+                    final_results['jobs'] = eligible_jobs
+                else:
+                    final_results['jobs'] = all_jobs
+            except requests.exceptions.RequestException as e:
+                final_results['jobs'] = {"error": f"Failed to fetch jobs: {e}"}
+
+        elif intent == "GET_SCHOLARSHIPS":
+            # ... (code for GET_SCHOLARSHIPS as before, using batch filtering) ...
+            endpoint = f'http://{PARTNER_IP}:5000/api/scholarships'
+            try:
+                print(f"Making REAL API call for all scholarships to: {endpoint}")
+                response = requests.get(endpoint, timeout=10)
+                response.raise_for_status()
+                all_scholarships = response.json()
+                if params.get("filter_by_eligibility") and student_id:
+                    if qualifications.get('income') is None:
+                        final_results['scholarships'] = {"message": "Cannot check scholarship eligibility: No verified income found."}
+                        continue
+                    eligible_scholarships = filter_items_with_llm(all_scholarships, qualifications, 'scholarships')
+                    final_results['scholarships'] = eligible_scholarships
+                else:
+                    final_results['scholarships'] = all_scholarships
+            except requests.exceptions.RequestException as e:
+                final_results['scholarships'] = {"error": f"Failed to fetch scholarships: {e}"}
+
+        elif intent == "GET_DOCUMENTS":
+            # ... (code for GET_DOCUMENTS as before) ...
+            endpoint = 'http://127.0.0.1:8000/api/documents/'
+            try:
+                response = requests.get(endpoint, timeout=5)
+                response.raise_for_status()
+                all_documents = response.json()
+                filtered_documents = all_documents
+                if student_id:
+                    try:
+                        student_id_int = int(student_id)
+                        filtered_documents = [doc for doc in all_documents if doc.get('student') == student_id_int]
+                    except (ValueError, TypeError): pass
+                status_filter = params.get('verification_status')
+                if status_filter:
+                    if isinstance(status_filter, list):
+                        filtered_documents = [doc for doc in filtered_documents if doc.get('verification_status') in status_filter]
+                    else:
+                        filtered_documents = [doc for doc in filtered_documents if doc.get('verification_status') == status_filter]
+                final_results['documents'] = filtered_documents
+            except requests.exceptions.RequestException as e:
+                final_results['documents'] = {"error": f"Failed to fetch documents: {e}"}
+
+        elif intent == "ANALYZE_SKILLS":
+            # ... (code for ANALYZE_SKILLS as before, using gemini-2.5-flash-lite) ...
+            job_title_param = params.get('job_title', 'a generic job')
+            mock_job_description = f"We are looking for a {job_title_param} to help us with our government projects."
+            skills_endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
+            prompt = f"Based on the following job description, list the top 5 most important technical skills. Return only a JSON array of strings. Description: '{mock_job_description}'"
+            payload = {"contents": [{"parts": [{"text": prompt}]}]}
+            try:
+                response = requests.post(skills_endpoint, json=payload, timeout=15)
+                response.raise_for_status()
+                result = response.json()
+                text_response = result['candidates'][0]['content']['parts'][0]['text']
+                cleaned_text = text_response.strip().replace('```json', '').replace('```', '')
+                skills = json.loads(cleaned_text)
+                final_results['skill_analysis'] = {"job_title": job_title_param, "required_skills": skills}
+            except Exception as e:
+                 final_results['skill_analysis'] = {"error": f"Error fetching skills: {e}"}
+
+    if not final_results:
+        final_results = {"message": "I understood the request, but couldn't find any relevant data."}
+    
+    # --- THIS IS THE NEW FINAL STEP ---
+    # Instead of returning raw JSON, summarize it.
+    return summarize_results_with_llm(final_results, original_query)
+  
     # --- UPDATED to use the new, smarter function ---
     qualifications = get_student_qualifications(student_id) if student_id else {}
 
