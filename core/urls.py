@@ -2,7 +2,7 @@
 
 from django.urls import path
 from .views import DocumentListView
-from .views import FederatedQueryView , StudentListView , RegisterView , LoginView , DocumentUploadView
+from .views import FederatedQueryView , StudentListView , RegisterView , LoginView , DocumentUploadView , GeneratePDFView
 
 urlpatterns = [
 
@@ -16,4 +16,6 @@ urlpatterns = [
     path('federated-query/', FederatedQueryView.as_view(), name='federated-query'),
 
     path('documents/upload/', DocumentUploadView.as_view(), name='document-upload'),
+
+    path('generate-pdf/', GeneratePDFView.as_view(), name='generate-pdf'),
 ]

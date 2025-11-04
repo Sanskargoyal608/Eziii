@@ -10,85 +10,97 @@ from core.models import Student, Document
 load_dotenv()
 
 # --- IMPORTANT ---
-PARTNER_IP = "192.168.52.109"  # Replace with your partner's actual local IP
+PARTNER_IP = "192.168.1.107"  # Replace with your partner's actual local IP
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# --- Helper functions ---
-
-def get_student_qualifications(student_id):
-    """Fetches and consolidates verified qualifications for a given student."""
-    if not student_id: return {}
-    qualifications = {'income': None, 'degrees': set(), 'highest_percentage': 0.0}
-    verified_docs = Document.objects.filter(student_id=student_id, verification_status='Verified')
-    for doc in verified_docs:
-        if doc.verified_data:
-            if 'income' in doc.verified_data: qualifications['income'] = doc.verified_data['income']
-            if 'percentage' in doc.verified_data: qualifications['highest_percentage'] = max(qualifications['highest_percentage'], doc.verified_data['percentage'])
-            if 'B.Tech Certificate' in doc.document_type: qualifications['degrees'].add('B.Tech')
-            if 'Diploma Certificate' in doc.document_type: qualifications['degrees'].add('Diploma')
-    qualifications['degrees'] = list(qualifications['degrees'])
-    print(f"Found qualifications for student {student_id}: {qualifications}")
-    return qualifications
-
-def filter_items_with_llm(items, qualifications, item_type):
+# --- NEW: LLM Helper for parsing extracted text ---
+def parse_qualifications_from_text(text, doc_type):
     """
-    NEW: Uses a single, powerful LLM call to filter a list of items (jobs or scholarships)
-    based on a student's qualifications.
+    Uses the LLM to parse raw extracted text from a document
+    into a structured JSON of qualifications.
     """
-    print(f"--- Filtering {len(items)} {item_type}s with a single LLM call ---")
-    if not items or not qualifications: return []
-    if not GEMINI_API_KEY: return {"error": "GEMINI_API_KEY not found."}
+    print(f"--- Parsing raw text from {doc_type} with LLM ---")
+    if not GEMINI_API_KEY:
+        return {}
 
-    items_json_string = json.dumps(items, indent=2)
-    
-    if item_type == 'jobs':
-        eligibility_check = """
-        A student is eligible for a job if their CGPA (percentage / 10) is greater than or equal to the job's 'min_cgpa',
-        and if their degree is one of the job's 'degree_required'.
-        The eligibility text is in the 'description' field of each job object.
-        """
-    else: # scholarships
-        eligibility_check = """
-        A student is eligible for a scholarship if their percentage is greater than or equal to the scholarship's 'min_percentage',
-        and their income is less than or equal to the scholarship's 'max_income_pa'.
-        The eligibility text is in the 'eligibility' field of each scholarship object.
-        """
+    # Define the extraction goal based on document type
+    if "marksheet" in doc_type.lower() or "certificate" in doc_type.lower():
+        extraction_prompt = "Extract the final 'percentage' (float) or 'cgpa' (float). If CGPA, convert it to percentage (CGPA * 9.5). Return as JSON: {\"percentage\": 85.2}"
+    elif "income" in doc_type.lower():
+        extraction_prompt = "Extract the final 'income' (integer) value. Return as JSON: {\"income\": 500000}"
+    else:
+        return {} # Not a document type we can parse for qualifications
 
     prompt = f"""
-    You are an intelligent filtering agent for a student database.
+    You are a data extraction tool. From the following raw text from a {doc_type},
+    perform the following task: {extraction_prompt}
     
-    Here are the student's verified qualifications:
-    {json.dumps(qualifications, indent=2)}
+    Raw Text:
+    "{text[:1000]}"
 
-    Here is a JSON array of all available {item_type}s:
-    {items_json_string}
-
-    Your task is to:
-    1. Carefully read the student's qualifications.
-    2. Analyze the unstructured eligibility text in each object in the provided list.
-    3. {eligibility_check}
-    4. Return a new, smaller JSON array that contains ONLY the full objects of the {item_type}s for which the student is eligible.
-    5. If the student is not eligible for any, you MUST return an empty array [].
-    6. Do not explain your reasoning. Your entire response must be ONLY the final, filtered JSON array.
-
-    Filtered JSON Array Output:
+    Return ONLY the JSON output.
+    Output:
     """
 
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
     try:
-        response = requests.post(api_url, json=payload, timeout=60) # Increased timeout for larger payload
+        response = requests.post(api_url, json=payload, timeout=15)
         response.raise_for_status()
         result = response.json()
         text_response = result['candidates'][0]['content']['parts'][0]['text']
         cleaned_text = text_response.strip().replace('```json', '').replace('```', '')
-        filtered_list = json.loads(cleaned_text)
-        print(f"LLM returned {len(filtered_list)} eligible {item_type}s.")
-        return filtered_list
+        parsed_data = json.loads(cleaned_text)
+        print(f"LLM parsed data: {parsed_data}")
+        return parsed_data
     except Exception as e:
-        print(f"ERROR: LLM batch filtering failed. {e}")
-        return {"error": f"LLM filtering process failed: {e}"}
+        print(f"ERROR: LLM parsing of extracted text failed: {e}")
+        return {}
 
+# --- UPDATED Helper function to get qualifications ---
+def get_student_qualifications(student_id):
+    """
+    Fetches and consolidates verified qualifications for a given student.
+    It now checks verified_data first, then falls back to parsing extracted_text.
+    """
+    if not student_id: return {}
+    qualifications = {'income': None, 'degrees': set(), 'highest_percentage': 0.0}
+    
+    # We only trust 'Verified' documents for eligibility
+    verified_docs = Document.objects.filter(student_id=student_id, verification_status='Verified')
+    print(f"Found {len(verified_docs)} verified documents for student {student_id}.")
+    
+    for doc in verified_docs:
+        data_to_use = None
+        
+        if doc.verified_data:
+            # 1. Prioritize clean, structured data if it exists (from dummy data)
+            print(f"Using 'verified_data' for doc {doc.document_id}")
+            data_to_use = doc.verified_data
+        elif doc.extracted_text:
+            # 2. Fallback: If no structured data, parse the raw text
+            print(f"Using 'extracted_text' for doc {doc.document_id}")
+            data_to_use = parse_qualifications_from_text(doc.extracted_text, doc.document_type)
+
+        if data_to_use:
+            if 'income' in data_to_use: 
+                qualifications['income'] = data_to_use['income']
+            
+            if 'percentage' in data_to_use: 
+                qualifications['highest_percentage'] = max(qualifications['highest_percentage'], data_to_use['percentage'])
+            
+            # Simple degree check (can be expanded)
+            if 'B.Tech Certificate' in doc.document_type: 
+                qualifications['degrees'].add('B.Tech')
+            if 'Diploma Certificate' in doc.document_type: 
+                qualifications['degrees'].add('Diploma')
+
+    qualifications['degrees'] = list(qualifications['degrees'])
+    print(f"Final qualifications for student {student_id}: {qualifications}")
+    return qualifications
+
+# --- UPDATED: analyze_and_decompose_query_with_llm ---
 def analyze_and_decompose_query_with_llm(query_text):
     """
     Uses a schema-grounded LLM to analyze a natural language query and decompose it 
@@ -99,7 +111,8 @@ def analyze_and_decompose_query_with_llm(query_text):
     
     prompt = f"""
     You are a query decomposition engine. Your job is to analyze the user's query and convert it into a structured JSON plan.
-    If the query is conversational or has no clear data-related intent (e.g., "Hello", "show my data", "SHow me my documents"), treat it as a "GET_DOCUMENTS" intent.
+    If the query is conversational (e.g., "Hello"), return an empty intents list.
+    If the query asks for general data (e.g., "show my data", "SHow me my documents"), interpret it as a "GET_DOCUMENTS" intent.
     Identify the user's name, all intents, and any filters, aggregations, or eligibility requirements.
 
     ### Schema & Intents ###
@@ -123,11 +136,18 @@ def analyze_and_decompose_query_with_llm(query_text):
     
     Query: "show my data"
     Output: {{"user_name": null, "intents": [{{"target": "GET_DOCUMENTS", "params": {{}}}}]}}
+    
+    Query: "SHow me my documents"
+    Output: {{"user_name": null, "intents": [{{"target": "GET_DOCUMENTS", "params": {{}}}}]}}
+    
+    Query: "Hello"
+    Output: {{"user_name": null, "intents": []}}
 
     ### User Query ###
     Query: "{query_text}"
     Output:
     """
+    # --- UPDATED MODEL NAME ---
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     try:
@@ -137,19 +157,96 @@ def analyze_and_decompose_query_with_llm(query_text):
         text_response = result['candidates'][0]['content']['parts'][0]['text']
         cleaned_text = text_response.strip().replace('```json', '').replace('```', '')
         plan = json.loads(cleaned_text)
-        print(f"LLM generated plan: {plan}") # This prints the decomposed query
+        print(f"LLM generated plan: {plan}") 
         return plan
     except Exception as e:
         print(f"ERROR: LLM processing failed. {e}")
         return {"error": f"Could not get a valid plan from the LLM: {e}"}
 
+# --- UPDATED: filter_items_with_llm ---
+def filter_items_with_llm(items, qualifications, item_type):
+    """
+    Uses a single LLM call to filter a list of items based on qualifications.
+    """
+    print(f"--- Filtering {len(items)} {item_type}s with a single LLM call ---")
+    if not items or not qualifications: return []
+    if not GEMINI_API_KEY: return {"error": "GEMINI_API_KEY not found."}
+
+    items_json_string = json.dumps(items, indent=2)
+    
+    if item_type == 'jobs':
+        eligibility_field = "'description'" 
+        eligibility_logic = """
+        A student is eligible for a job if their CGPA (highest_percentage / 10) is >= the job's 'min_cgpa',
+        AND their degree (from 'degrees' list) matches the job's 'degree_required'.
+        Extract 'min_cgpa' (float) and 'degree_required' (string) from the unstructured text in the 'description' field.
+        """
+    else: # scholarships
+        eligibility_field = "'eligibility'" 
+        eligibility_logic = """
+        A student is eligible for a scholarship if their 'highest_percentage' is >= the scholarship's 'min_percentage',
+        AND their 'income' is <= the scholarship's 'max_income_pa'.
+        Extract 'min_percentage' (integer) and 'max_income_pa' (integer) from the unstructured text in the 'eligibility' field.
+        """
+
+    prompt = f"""
+    You are an intelligent filtering agent for a student database.
+    
+    Student Qualifications:
+    {json.dumps(qualifications, indent=2)}
+
+    List of {item_type}s (JSON Array):
+    {items_json_string}
+
+    Instructions:
+    1. Analyze the student's qualifications.
+    2. For each item in the list:
+       a. Read the unstructured text from the item's {eligibility_field} field.
+       b. Extract the necessary criteria values (min_cgpa, degree_required, min_percentage, max_income_pa) from this text.
+       c. {eligibility_logic}
+       d. Compare the extracted criteria with the student's qualifications.
+    3. Return a new JSON array containing ONLY the full objects of the {item_type}s for which the student meets the criteria.
+    4. If no items meet the criteria, you MUST return an empty array [].
+    5. Respond ONLY with the filtered JSON array. Do not add explanations.
+
+    Filtered JSON Array Output:
+    """
+
+    # --- UPDATED MODEL NAME ---
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    try:
+        response = requests.post(api_url, json=payload, timeout=60) 
+        response.raise_for_status()
+        result = response.json()
+        text_response = result['candidates'][0]['content']['parts'][0]['text']
+        cleaned_text = text_response.strip().replace('```json', '').replace('```', '')
+        
+        try:
+            filtered_list = json.loads(cleaned_text)
+            if not isinstance(filtered_list, list): 
+                 raise json.JSONDecodeError("LLM did not return a list.", cleaned_text, 0)
+            print(f"LLM returned {len(filtered_list)} eligible {item_type}s.")
+            return filtered_list
+        except json.JSONDecodeError as json_e:
+             print(f"ERROR: LLM returned invalid JSON for filtering. Response: {cleaned_text}. Error: {json_e}")
+             return {"error": f"LLM returned invalid JSON during filtering."}
+
+    except Exception as e:
+        print(f"ERROR: LLM batch filtering failed. {e}")
+        return {"error": f"LLM filtering process failed: {e}"}
+
+# --- (execute_query_plan function remains the same) ---
 def execute_query_plan(plan, student_id=None):
     """
     Executes all intents in the query plan using the new batch filtering method.
     """
     print(f"--- Executing Full Query Plan (Context: student_id={student_id}) ---")
-    if "error" in plan or not plan.get("intents"):
-        return {"error": "Invalid query plan received."}
+    
+    if "error" in plan:
+        return {"error": f"LLM Decomposition Error: {plan['error']}"}
+    if not plan.get("intents"): 
+        return {"message": "I'm sorry, I couldn't understand that request. Please ask about jobs, scholarships, or your documents."}
     
     final_results = {}
     if not student_id and plan.get("user_name"):
@@ -158,6 +255,7 @@ def execute_query_plan(plan, student_id=None):
             student_id = student.student_id
         except Student.DoesNotExist: pass
     
+    # --- UPDATED to use the new, smarter function ---
     qualifications = get_student_qualifications(student_id) if student_id else {}
 
     for intent_data in plan["intents"]:
@@ -175,7 +273,9 @@ def execute_query_plan(plan, student_id=None):
                 if params.get("aggregate") == "count":
                     final_results['jobs_count'] = {"count": len(all_jobs)}
                 elif params.get("filter_by_eligibility") and student_id:
-                    # --- NEW: Use the single-call LLM filter ---
+                    if not qualifications.get('degrees'):
+                         final_results['jobs'] = {"message": "Cannot check job eligibility: No verified degree found."}
+                         continue
                     eligible_jobs = filter_items_with_llm(all_jobs, qualifications, 'jobs')
                     final_results['jobs'] = eligible_jobs
                 else:
@@ -192,7 +292,9 @@ def execute_query_plan(plan, student_id=None):
                 all_scholarships = response.json()
 
                 if params.get("filter_by_eligibility") and student_id:
-                     # --- NEW: Use the single-call LLM filter ---
+                    if qualifications.get('income') is None:
+                        final_results['scholarships'] = {"message": "Cannot check scholarship eligibility: No verified income found."}
+                        continue
                     eligible_scholarships = filter_items_with_llm(all_scholarships, qualifications, 'scholarships')
                     final_results['scholarships'] = eligible_scholarships
                 else:
@@ -228,10 +330,10 @@ def execute_query_plan(plan, student_id=None):
                 final_results['documents'] = {"error": f"Failed to fetch documents: {e}"}
 
         elif intent == "ANALYZE_SKILLS":
-            # This logic remains sequential as it's a different task
             job_title_param = params.get('job_title', 'a generic job')
             mock_job_description = f"We are looking for a {job_title_param} to help us with our government projects."
-            # In a real system, you'd fetch a specific job's description first.
+            
+            # --- UPDATED MODEL NAME ---
             skills_endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
             prompt = f"Based on the following job description, list the top 5 most important technical skills. Return only a JSON array of strings. Description: '{mock_job_description}'"
             payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -244,11 +346,10 @@ def execute_query_plan(plan, student_id=None):
                 skills = json.loads(cleaned_text)
                 final_results['skill_analysis'] = {"job_title": job_title_param, "required_skills": skills}
             except Exception as e:
-                final_results['skill_analysis'] = {"error": f"Error fetching skills: {e}"}
-
+                 final_results['skill_analysis'] = {"error": f"Error fetching skills: {e}"}
 
     if not final_results:
-        return {"message": "I'm sorry, I couldn't determine a specific task from your query."}
+        return {"message": "I couldn't determine a specific task from your query."}
         
     return final_results
 

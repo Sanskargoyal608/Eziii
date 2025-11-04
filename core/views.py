@@ -15,6 +15,12 @@ from query_analyzer import analyze_and_decompose_query_with_llm, execute_query_p
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db.models import Q # Import for complex lookups
 
+import io
+from django.http import HttpResponse
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+
 class RegisterView(APIView):
     permission_classes = [AllowAny] # Anyone can register
 
@@ -132,3 +138,107 @@ class FederatedQueryView(APIView):
         results = execute_query_plan(plan, student_id=student_id)
         
         return Response(results)
+    
+
+class GeneratePDFView(APIView):
+    """
+    Generates a combined PDF from a list of student's documents.
+    Expects a POST request with:
+    {
+        "document_ids": [1, 5, 12]
+    }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, format=None):
+        document_ids = request.data.get('document_ids')
+
+        if not document_ids or not isinstance(document_ids, list):
+            return Response({"error": "A list of 'document_ids' is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1. Fetch only the documents that belong to the authenticated user
+        #    and were in the requested list. This is a security check.
+        docs_to_export = Document.objects.filter(
+            student=request.user, 
+            document_id__in=document_ids
+        ).order_by('document_type')
+
+        if not docs_to_export.exists():
+            return Response({"error": "No valid documents found for this user."}, status=status.HTTP_404_NOT_FOUND)
+
+        # 2. Create a PDF in memory
+        buffer = io.BytesIO()
+        p = canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter # Get page dimensions
+
+        # Set a title
+        p.setFont("Helvetica-Bold", 16)
+        p.drawString(inch, height - inch, f"Verified Documents for: {request.user.full_name}")
+        
+        y_position = height - (1.5 * inch) # Start drawing below the title
+
+        for doc in docs_to_export:
+            # Check if we need to start a new page
+            if y_position < 2 * inch:
+                p.showPage() # End current page
+                p.setFont("Helvetica-Bold", 16)
+                p.drawString(inch, height - inch, f"Verified Documents (Page 2)") # Title for new page
+                y_position = height - (1.5 * inch)
+
+            # 3. Draw the document data onto the PDF
+            p.setFont("Helvetica-Bold", 12)
+            p.drawString(inch, y_position, f"Document Type: {doc.document_type}")
+            y_position -= 0.25 * inch
+            
+            p.setFont("Helvetica", 10)
+            p.drawString(inch, y_position, f"Status: {doc.verification_status}")
+            y_position -= 0.25 * inch
+
+            if doc.issue_date:
+                p.drawString(inch, y_position, f"Issue Date: {doc.issue_date.strftime('%Y-%m-%d')}")
+                y_position -= 0.25 * inch
+
+            if doc.verified_data:
+                p.drawString(inch, y_position, f"Verified Data: {json.dumps(doc.verified_data)}")
+                y_position -= 0.25 * inch
+            
+            if doc.extracted_text:
+                p.setFont("Helvetica-Oblique", 9)
+                p.drawString(inch, y_position, "--- Extracted Text Start ---")
+                y_position -= 0.2 * inch
+                
+                # Wrap extracted text
+                text = p.beginText(inch, y_position)
+                text.setFont("Courier", 8)
+                text.setLeading(10) # Line spacing
+                for line in doc.extracted_text.split('\n'):
+                    text.textLine(line)
+                p.drawText(text)
+                y_position = text.getY() # Get new Y position after text block
+                
+                p.setFont("Helvetica-Oblique", 9)
+                p.drawString(inch, y_position - (0.1 * inch), "--- Extracted Text End ---")
+                y_position -= 0.25 * inch
+
+
+            # Add a separator line
+            y_position -= 0.25 * inch
+            p.line(inch, y_position, width - inch, y_position)
+            y_position -= 0.25 * inch
+
+
+        # 4. Save the PDF and return it
+        p.showPage()
+        p.save()
+        
+        # Rewind the buffer to the beginning
+        buffer.seek(0)
+        
+        # Create the HTTP response
+        response = HttpResponse(
+            buffer,
+            content_type='application/pdf'
+        )
+        response['Content-Disposition'] = 'attachment; filename="EduVerify_Documents.pdf"'
+        return response
+
