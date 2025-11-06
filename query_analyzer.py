@@ -103,7 +103,12 @@ def parse_qualifications_from_text(text, doc_type):
     """
 
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "responseMimeType": "application/json"
+        }
+    }
 
     try:
         response = requests.post(api_url, json=payload, timeout=15)
@@ -165,14 +170,16 @@ def analyze_and_decompose_query_with_llm(query_text):
     """
     Uses a schema-grounded LLM to analyze a natural language query and decompose it 
     into a structured plan.
+    NOW WITH ROBUST JSON CLEANING.
     """
     print(f"--- Decomposing query with LLM: '{query_text}' ---")
-    if not GEMINI_API_KEY: return {"error": "GEMINI_API_KEY not found."}
+    if not GEMINI_API_KEY: 
+        return {"error": "GEMINI_API_KEY not found."}
     
     prompt = f"""
     You are a query decomposition engine. Your job is to analyze the user's query and convert it into a structured JSON plan.
     If the query is conversational (e.g., "Hello"), return an empty intents list.
-    If the query asks for general data (e.g., "show my data", "SHow me my documents"), interpret it as a "GET_DOCUMENTS" intent.
+    If the query asks for general data (e.g., "show my data", "SHow me my documents"), interpret it as a "GET_DOCUMENTS" intent with no filters.
     Identify the user's name, all intents, and any filters, aggregations, or eligibility requirements.
 
     ### Schema & Intents ###
@@ -183,45 +190,83 @@ def analyze_and_decompose_query_with_llm(query_text):
 
     ### Examples ###
     Query: "which documents of mine are verified"
-    Output: {{"user_name": null, "intents": [{{"target": "GET_DOCUMENTS", "params": {{"verification_status": "Verified"}}}}]}}
+    Output: {{"user_name": None, "intents": [{{"target": "GET_DOCUMENTS", "params": {{"verification_status": "Verified"}}}}]}}
 
     Query: "Show me all scholarships"
-    Output: {{"user_name": null, "intents": [{{"target": "GET_SCHOLARSHIPS", "params": {{}}}}]}}
+    Output: {{"user_name": None, "intents": [{{"target": "GET_SCHOLARSHIPS", "params": {{}}}}]}}
 
     Query: "Which scholarship or job am I eligible in"
-    Output: {{"user_name": null, "intents": [{{"target": "GET_JOBS", "params": {{"filter_by_eligibility": true}}}}, {{"target": "GET_SCHOLARSHIPS", "params": {{"filter_by_eligibility": true}}}}]}}
+    Output: {{"user_name": None, "intents": [{{"target": "GET_JOBS", "params": {{"filter_by_eligibility": true}}}}, {{"target": "GET_SCHOLARSHIPS", "params": {{"filter_by_eligibility": true}}}}]}}
 
     Query: "How many jobs are there?"
-    Output: {{"user_name": null, "intents": [{{"target": "GET_JOBS", "params": {{"aggregate": "count"}}}}]}}
+    Output: {{"user_name": None, "intents": [{{"target": "GET_JOBS", "params": {{"aggregate": "count"}}}}]}}
     
     Query: "show my data"
-    Output: {{"user_name": null, "intents": [{{"target": "GET_DOCUMENTS", "params": {{}}}}]}}
+    Output: {{"user_name": None, "intents": [{{"target": "GET_DOCUMENTS", "params": {{}}}}]}}
     
     Query: "SHow me my documents"
-    Output: {{"user_name": null, "intents": [{{"target": "GET_DOCUMENTS", "params": {{}}}}]}}
+    Output: {{"user_name": None, "intents": [{{"target": "GET_DOCUMENTS", "params": {{}}}}]}}
     
     Query: "Hello"
-    Output: {{"user_name": null, "intents": []}}
+    Output: {{"user_name": None, "intents": []}}
 
     ### User Query ###
     Query: "{query_text}"
     Output:
     """
-    # --- UPDATED MODEL NAME ---
+    
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "responseMimeType": "application/json"
+        }
+    }
+    
     try:
         response = requests.post(api_url, json=payload, timeout=20)
         response.raise_for_status()
         result = response.json()
+        
+        if 'candidates' not in result:
+            print(f"ERROR: LLM returned no candidates. Response: {result}")
+            return {"error": f"LLM returned no candidates. {result.get('error', {}).get('message', '')}"}
+
         text_response = result['candidates'][0]['content']['parts'][0]['text']
-        cleaned_text = text_response.strip().replace('```json', '').replace('```', '')
-        plan = json.loads(cleaned_text)
-        print(f"LLM generated plan: {plan}") 
-        return plan
+        
+        # --- NEW ROBUST JSON PARSING ---
+        try:
+            # 1. First, try to load it directly
+            plan = json.loads(text_response)
+            print(f"LLM generated plan (direct): {plan}") 
+            return plan
+        except json.JSONDecodeError:
+            print("Direct JSON load failed. Attempting to clean response...")
+            # 2. If it fails, find the first '{' and last '}'
+            try:
+                start = text_response.find('{')
+                end = text_response.rfind('}') + 1
+                if start == -1 or end == 0:
+                    raise ValueError("No JSON object found in response")
+                
+                cleaned_json_text = text_response[start:end]
+                plan = json.loads(cleaned_json_text)
+                print(f"LLM generated plan (cleaned): {plan}") 
+                return plan
+            except Exception as e:
+                # If cleaning also fails, log the bad text and return an error
+                print(f"ERROR: LLM returned invalid JSON. Cleaning failed. Error: {e}")
+                print(f"--- LLM Raw Response Text ---")
+                print(text_response)
+                print(f"--- End of Raw Response ---")
+                return {"error": f"LLM returned invalid JSON: {text_response}"}
+        # --- END OF NEW PARSING ---
+
     except Exception as e:
-        print(f"ERROR: LLM processing failed. {e}")
+        print(f"ERROR: LLM API call failed. {e}")
         return {"error": f"Could not get a valid plan from the LLM: {e}"}
+
+# --- END OF REPLACEMENT ---
 
 # --- UPDATED: filter_items_with_llm ---
 def filter_items_with_llm(items, qualifications, item_type):
@@ -367,27 +412,50 @@ def execute_query_plan(plan, student_id=None, original_query=""):
                 final_results['scholarships'] = {"error": f"Failed to fetch scholarships: {e}"}
 
         elif intent == "GET_DOCUMENTS":
-            # ... (code for GET_DOCUMENTS as before) ...
-            endpoint = 'http://127.0.0.1:8000/api/documents/'
             try:
-                response = requests.get(endpoint, timeout=5)
-                response.raise_for_status()
-                all_documents = response.json()
-                filtered_documents = all_documents
-                if student_id:
-                    try:
-                        student_id_int = int(student_id)
-                        filtered_documents = [doc for doc in all_documents if doc.get('student') == student_id_int]
-                    except (ValueError, TypeError): pass
-                status_filter = params.get('verification_status')
-                if status_filter:
-                    if isinstance(status_filter, list):
-                        filtered_documents = [doc for doc in filtered_documents if doc.get('verification_status') in status_filter]
+                # Start with all documents in the database
+                docs_query = Document.objects.all()
+
+                # A. Check if the admin is asking an aggregate query about ALL students
+                if not student_id: 
+                    # This is the "All Students" case
+                    
+                    # Filter by status if the query asked for it (e.g., "how many verified...")
+                    status_filter = params.get('verification_status')
+                    if status_filter:
+                        docs_query = docs_query.filter(verification_status=status_filter)
+                    
+                    # Check for document type (e.g., "how many... aadhar")
+                    # This is a simple text match for now
+                    if "aadhar" in original_query.lower():
+                        docs_query = docs_query.filter(document_type__icontains="Aadhar")
+                    
+                    # Finally, perform the aggregation
+                    if params.get("aggregate") == "count":
+                        count = docs_query.count()
+                        final_results['document_aggregate'] = {"count": count, "query": original_query}
                     else:
-                        filtered_documents = [doc for doc in filtered_documents if doc.get('verification_status') == status_filter]
-                final_results['documents'] = filtered_documents
-            except requests.exceptions.RequestException as e:
-                final_results['documents'] = {"error": f"Failed to fetch documents: {e}"}
+                        # We don't want to return all 1000 documents, so we ask them to be specific.
+                        final_results['documents'] = {"message": "You're querying all students. Please ask an aggregate question like 'how many...' or select a specific student."}
+
+                # B. This is the normal case: a specific student IS selected
+                else: 
+                    # Filter for the specific student
+                    docs_query = docs_query.filter(student_id=student_id)
+                    
+                    # Filter by status if the query asked for it
+                    status_filter = params.get('verification_status')
+                    if status_filter:
+                        docs_query = docs_query.filter(verification_status=status_filter)
+                    
+                    # Serialize the data manually for the LLM
+                    final_results['documents'] = [
+                        {"type": d.document_type, "status": d.verification_status, "id": d.document_id} 
+                        for d in docs_query
+                    ]
+            
+            except Exception as e:
+                final_results['documents'] = {"error": f"Failed to fetch documents locally: {e}"}
 
         elif intent == "ANALYZE_SKILLS":
             # ... (code for ANALYZE_SKILLS as before, using gemini-2.5-flash-lite) ...
@@ -395,7 +463,12 @@ def execute_query_plan(plan, student_id=None, original_query=""):
             mock_job_description = f"We are looking for a {job_title_param} to help us with our government projects."
             skills_endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
             prompt = f"Based on the following job description, list the top 5 most important technical skills. Return only a JSON array of strings. Description: '{mock_job_description}'"
-            payload = {"contents": [{"parts": [{"text": prompt}]}]}
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "responseMimeType": "application/json"
+                }
+            }
             try:
                 response = requests.post(skills_endpoint, json=payload, timeout=15)
                 response.raise_for_status()

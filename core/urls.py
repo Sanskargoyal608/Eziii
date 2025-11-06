@@ -2,9 +2,13 @@
 
 from django.urls import path
 from .views import DocumentListView
-from .views import FederatedQueryView , StudentListView , RegisterView , LoginView , DocumentUploadView , GeneratePDFView
+from .views import FederatedQueryView , StudentListView , RegisterView , LoginView , DocumentUploadView , GeneratePDFView , AdminDashboardView , StudentSummaryView , AdminChatView
 
 urlpatterns = [
+
+    path('dashboard/', AdminDashboardView.as_view(), name='admin-dashboard'),
+    path('summary/<int:student_id>/', StudentSummaryView.as_view(), name='admin-student-summary'),
+    path('chat/', AdminChatView.as_view(), name='admin-chat'),
 
     path('register/', RegisterView.as_view(), name='register'),
     path('login/', LoginView.as_view(), name='login'),

@@ -1,11 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
+import React, { useState, useEffect, createContext, useContext } from 'react';
+// --- MODIFICATION: Import Admin components we WILL create ---
+import { BrowserRouter as Router, Routes, Route, NavLink, Navigate, useLocation ,useNavigate } from 'react-router-dom';
 import styles from './App.module.css';
-import { JobList } from './JobList';
-import { ScholarshipList } from './ScholarshipList';
-import { Home } from './Home';
+import AdminLayout from './components/AdminLayout'; // We will create this
+import AdminHome from './components/AdminHome';   // We will create this
+import AdminChat from './components/AdminChat';   // We will create this
 
-// --- ICONS ---
+
+
+// --- (Icons: HomeIcon, ChatIcon, SendIcon, LogoutIcon remain exactly the same) ---
 const HomeIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className={styles.icon} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
 );
@@ -15,53 +18,219 @@ const ChatIcon = () => (
 const SendIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className={styles.icon} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
 );
-const BriefcaseIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className={styles.icon} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-);
-const AcademicCapIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className={styles.icon} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 14l9-5-9-5-9 5 9 5z" /><path d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-5.998 12.078 12.078 0 01.665-6.479L12 14z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-5.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222 4 2.222V20M1 12v7a2 2 0 002 2h18a2 2 0 002-2v-7" /></svg>
+const LogoutIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={styles.icon} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
 );
 
+import { apiFetch } from './api';
 
 
-// --- FEDERATED CHAT COMPONENT --
 
+// --- (Auth Context: AuthContext, useAuth, AuthProvider remain exactly the same) ---
+const AuthContext = createContext(null);
+
+const useAuth = () => {
+    return useContext(AuthContext);
+};
+
+const AuthProvider = ({ children }) => {
+    // --- (This component's content is unchanged) ---
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+
+    useEffect(() => {
+        const token = localStorage.getItem('accessToken');
+        if (token) {
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                setUser({ 
+                    student_id: payload.student_id, 
+                    full_name: "Student",
+                    email: "..."
+                });
+            } catch (e) {
+                console.error("Error decoding token", e);
+                localStorage.clear();
+            }
+        }
+        setLoading(false);
+    }, []);
+
+    const login = async (email, password) => {
+        const response = await apiFetch('/login/', { // Uses /api/login/
+            method: 'POST',
+            body: JSON.stringify({ email, password }),
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Login failed');
+        }
+        const data = await response.json();
+        localStorage.setItem('accessToken', data.access);
+        localStorage.setItem('refreshToken', data.refresh);
+        setUser(data.user);
+    };
+
+    const register = async (full_name, email, password) => {
+        const response = await apiFetch('/register/', { // Uses /api/register/
+            method: 'POST',
+            body: JSON.stringify({ full_name, email, password }),
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(JSON.stringify(errorData) || 'Registration failed');
+        }
+        const data = await response.json();
+        localStorage.setItem('accessToken', data.access);
+        localStorage.setItem('refreshToken', data.refresh);
+        setUser({ full_name: data.user.full_name, email: data.user.email, student_id: null });
+    };
+
+    const logout = () => {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        setUser(null);
+        window.location.href = '/login';
+    };
+
+    const value = { user, login, logout, register, isAuthenticated: !!user };
+
+    if (loading) {
+        return <div className={styles.loadingPage}>Loading...</div>;
+    }
+
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+
+// --- (Protected Route: ProtectedRoute remains exactly the same) ---
+const ProtectedRoute = ({ children }) => {
+    const { isAuthenticated } = useAuth();
+    const location = useLocation();
+
+    if (!isAuthenticated) {
+        return <Navigate to="/login" state={{ from: location }} replace />;
+    }
+    return children;
+};
+
+// --- (Login Page: LoginPage remains exactly the same) ---
+const LoginPage = () => {
+    // --- (This component's content is unchanged) ---
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const { login } = useAuth();
+
+    const navigate = useNavigate();
+    const location = useLocation();
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setIsLoading(true);
+        try {
+            await login(email, password);
+            const from = location.state?.from?.pathname || '/';
+            navigate(from, { replace: true });
+            window.location.href = '/'; // Redirect to home
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className={styles.authContainer}>
+            <form className={styles.authForm} onSubmit={handleSubmit}>
+                <h2 className={styles.authTitle}>Student Portal Login</h2>
+                {error && <p className={styles.authError}>{error}</p>}
+                <div className={styles.inputGroup}>
+                    <label htmlFor="email">Email</label>
+                    <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                </div>
+                <div className={styles.inputGroup}>
+                    <label htmlFor="password">Password</label>
+                    <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                </div>
+                <button type="submit" className={styles.authButton} disabled={isLoading}>
+                    {isLoading ? 'Logging in...' : 'Login'}
+                </button>
+                <p className={styles.authLink}>
+                    Don't have an account? <NavLink to="/register">Register</NavLink>
+                </p>
+            </form>
+        </div>
+    );
+};
+
+// --- (Register Page: RegisterPage remains exactly the same) ---
+const RegisterPage = () => {
+    // --- (This component's content is unchanged) ---
+    const [fullName, setFullName] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const { register } = useAuth();
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setIsLoading(true);
+        try {
+            await register(fullName, email, password);
+            window.location.href = '/'; // Redirect to home
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className={styles.authContainer}>
+            <form className={styles.authForm} onSubmit={handleSubmit}>
+                <h2 className={styles.authTitle}>Create Student Account</h2>
+                {error && <p className={styles.authError}>{error}</p>}
+                <div className={styles.inputGroup}>
+                    <label htmlFor="fullName">Full Name</label>
+                    <input id="fullName" type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+                </div>
+                <div className={styles.inputGroup}>
+                    <label htmlFor="email">Email</label>
+                    <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                </div>
+                <div className={styles.inputGroup}>
+                    <label htmlFor="password">Password</label>
+                    <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                </div>
+                <button type="submit" className={styles.authButton} disabled={isLoading}>
+                    {isLoading ? 'Registering...' : 'Register'}
+                </button>
+                <p className={styles.authLink}>
+                    Already have an account? <NavLink to="/login">Login</NavLink>
+                </p>
+            </form>
+        </div>
+    );
+};
+
+
+// --- (Federated Chat: FederatedChat remains exactly the same) ---
 const FederatedChat = () => {
+    // --- (This component's content is unchanged) ---
     const [messages, setMessages] = useState([
-        { id: 1, text: "Welcome! Select a student and ask a query.", sender: 'bot' }
+        { id: 1, text: "Welcome! Ask me to find jobs, scholarships, or your documents.", sender: 'bot' }
     ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    
-    // --- NEW: State for students and selected student ---
-    const [students, setStudents] = useState([]);
-    const [selectedStudentId, setSelectedStudentId] = useState('');
-
-    // --- NEW: Fetch the list of students when the component loads ---
-    useEffect(() => {
-        const fetchStudents = async () => {
-            try {
-                const response = await fetch('http://127.0.0.1:8000/api/students/');
-                if (!response.ok) {
-                    throw new Error('Failed to fetch students');
-                }
-                const data = await response.json();
-                setStudents(data);
-                if (data.length > 0) {
-                    setSelectedStudentId(data[0].student_id); // Select the first student by default
-                }
-            } catch (error) {
-                console.error("Error fetching students:", error);
-                // Optionally, add an error message to the chat
-                setMessages(prev => [...prev, {id: Date.now(), text: "Error: Could not load student list.", sender: 'bot'}]);
-            }
-        };
-        fetchStudents();
-    }, []);
 
     const handleSend = async () => {
         if (input.trim() === '' || isLoading) return;
-
 
         const userMessage = { id: Date.now(), text: input, sender: 'user' };
         setMessages(prev => [...prev, userMessage]);
@@ -69,29 +238,18 @@ const FederatedChat = () => {
         setIsLoading(true);
 
         try {
-            // Make a REAL API call to your Django federated query endpoint
-            const response = await fetch('http://127.0.0.1:8000/api/federated-query/', {
+            const response = await apiFetch('/federated-query/', { // Uses /api/federated-query/
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-
-                // --- UPDATED: Send the selected student ID along with the query ---
-                body: JSON.stringify({ 
-                    query: input,
-                    student_id: selectedStudentId 
-                }),
+                body: JSON.stringify({ query: input }),
             });
 
             if (!response.ok) {
-                throw new Error('Network response was not ok');
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Network response was not ok');
             }
 
             const data = await response.json();
-            
-
-            const botResponseText = JSON.stringify(data, null, 2);
-
+            const botResponseText = data.response_text || JSON.stringify(data, null, 2);
             const botMessage = { id: Date.now() + 1, text: botResponseText, sender: 'bot' };
             setMessages(prev => [...prev, botMessage]);
 
@@ -109,84 +267,318 @@ const FederatedChat = () => {
             <div className={styles.messageList}>
                 {messages.map((msg) => (
                     <div key={msg.id} className={`${styles.message} ${msg.sender === 'user' ? styles.userMessage : styles.botMessage}`}>
-
                         <pre className={styles.preformatted}>{msg.text}</pre>
                     </div>
                 ))}
+                 {isLoading && <div className={`${styles.message} ${styles.botMessage}`}><span className={styles.loading}></span></div>}
             </div>
-            {/* --- NEW: Student selection dropdown --- */}
-            <div className={styles.chatControls}>
-                <select 
-                    value={selectedStudentId} 
-                    onChange={(e) => setSelectedStudentId(e.target.value)}
-                    className={styles.studentSelector}
-                >
-                    <option value="" disabled>Select a Student</option>
-                    {students.map(student => (
-                        <option key={student.student_id} value={student.student_id}>
-                            {student.full_name}
-                        </option>
-                    ))}
+            <div className={styles.inputArea}>
+                <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                    placeholder="Type your query here..."
+                    className={styles.textInput}
+                    disabled={isLoading}
+                />
+                <button onClick={handleSend} className={styles.sendButton} disabled={isLoading}>
+                    <SendIcon />
+                </button>
+            </div>
+        </div>
+    );
+};
+
+// --- (Document Upload: DocumentUpload remains exactly the same) ---
+const DocumentUpload = ({ onUploadSuccess }) => {
+    // --- (This component's content is unchanged) ---
+    const [file, setFile] = useState(null);
+    const [documentType, setDocumentType] = useState('Aadhar Card');
+    const [error, setError] = useState('');
+    const [isUploading, setIsUploading] = useState(false);
+
+    const handleFileChange = (e) => {
+        setFile(e.target.files[0]);
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!file) {
+            setError('Please select a file to upload.');
+            return;
+        }
+        setError('');
+        setIsUploading(true);
+
+        const formData = new FormData();
+        formData.append('document_type', documentType);
+        formData.append('uploaded_file', file);
+
+        try {
+            const response = await apiFetch('/documents/upload/', { // Uses /api/documents/upload/
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(JSON.stringify(errorData));
+            }
+
+            const newDocument = await response.json();
+            onUploadSuccess(newDocument);
+            setFile(null);
+            e.target.reset();
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    return (
+        <form className={styles.uploadForm} onSubmit={handleSubmit}>
+            <h3 className={styles.formTitle}>Upload New Document</h3>
+            {error && <p className={styles.authError}>{error}</p>}
+            <div className={styles.inputGroup}>
+                <label htmlFor="docType">Document Type</label>
+                <select id="docType" value={documentType} onChange={(e) => setDocumentType(e.target.value)} className={styles.selectInput}>
+                    <option value="Aadhar Card">Aadhar Card</option>
+                    <option value="PAN Card">PAN Card</option>
+                    <option value="B.Tech Certificate">B.Tech Certificate</option>
+                    <option value="12th Marksheet">12th Marksheet</option>
+                    <option value="10th Marksheet">10th Marksheet</option>
+                    <option value="Income Certificate">Income Certificate</option>
+                    <option value="Other">Other</option>
                 </select>
-                <div className={styles.inputArea}>
-                    <input
-                        type="text"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                        placeholder="Type your query here..."
-                        className={styles.textInput}
-                    />
-                    <button onClick={handleSend} className={styles.sendButton} disabled={isLoading}>
-                        <SendIcon />
-                    </button>
-                </div>
+            </div>
+            <div className={styles.inputGroup}>
+                <label htmlFor="file">File (PDF or Image)</label>
+                <input id="file" type="file" onChange={handleFileChange} accept=".pdf,.png,.jpg,.jpeg" />
+            </div>
+            <button type="submit" className={styles.authButton} disabled={isUploading}>
+                {isUploading ? 'Uploading...' : 'Upload'}
+            </button>
+        </form>
+    );
+};
+
+// --- (PDF Generator: PDFGenerator remains exactly the same) ---
+const PDFGenerator = ({ selectedDocs, hasDocs }) => {
+    // --- (This component's content is unchanged) ---
+    const [isGenerating, setIsGenerating] = useState(false);
+
+    const handleGenerate = async () => {
+        const docIds = Object.keys(selectedDocs).filter(id => selectedDocs[id]);
+        if (docIds.length === 0) {
+            alert("Please select at least one document to include in the PDF.");
+            return;
+        }
+        setIsGenerating(true);
+        try {
+            const response = await apiFetch('/generate-pdf/', { // Uses /api/generate-pdf/
+                method: 'POST',
+                body: JSON.stringify({ document_ids: docIds.map(Number) }),
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'PDF generation failed');
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "EduVerify_Documents.pdf";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    if (!hasDocs) return null;
+
+    return (
+        <div className={styles.pdfGenerator}>
+            <button className={styles.authButton} onClick={handleGenerate} disabled={isGenerating}>
+                {isGenerating ? 'Generating...' : 'Generate PDF for Selected'}
+            </button>
+        </div>
+    );
+};
+
+
+// --- (Home Component: Home remains exactly the same) ---
+const Home = () => {
+    // --- (This component's content is unchanged) ---
+    const [documents, setDocuments] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [selectedDocs, setSelectedDocs] = useState({});
+
+    const fetchDocuments = async () => {
+        setLoading(true);
+        try {
+            const response = await apiFetch('/documents/'); // Uses /api/documents/
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to fetch documents');
+            }
+            const data = await response.json();
+            setDocuments(data);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchDocuments();
+    }, []);
+
+    const handleUploadSuccess = (newDocument) => {
+        setDocuments(prevDocs => [newDocument, ...prevDocs]);
+    };
+
+    const handleDocSelect = (docId) => {
+        setSelectedDocs(prev => ({
+            ...prev,
+            [docId]: !prev[docId]
+        }));
+    };
+
+    const getStatusClass = (status) => {
+        if (status === 'Verified') return styles.verified;
+        if (status === 'Pending') return styles.pending;
+        if (status === 'Rejected') return styles.rejected;
+        return '';
+    };
+
+    return (
+        <div>
+            <h1 className={styles.mainTitle}>My Documents</h1>
+            <DocumentUpload onUploadSuccess={handleUploadSuccess} />
+            <hr className={styles.divider} />
+            <PDFGenerator selectedDocs={selectedDocs} hasDocs={documents.length > 0} />
+            
+            {loading && <p className={styles.infoText}>Loading documents...</p>}
+            {error && <p className={styles.errorText}>Error: {error}</p>}
+            
+            {!loading && !error && documents.length === 0 && (
+                <p className={styles.infoText}>No documents found. Try uploading one!</p>
+            )}
+
+            <div className={styles.grid}>
+                {documents.map(doc => (
+                    <div key={doc.document_id} className={`${styles.card} ${selectedDocs[doc.document_id] ? styles.cardSelected : ''}`}>
+                        <div className={styles.cardHeader}>
+                             <input 
+                                type="checkbox"
+                                checked={!!selectedDocs[doc.document_id]}
+                                onChange={() => handleDocSelect(doc.document_id)}
+                            />
+                            <h3 className={styles.cardTitle}>{doc.document_type}</h3>
+                        </div>
+                        <p className={styles.cardInfo}>Issue Date: {doc.issue_date || 'N/A'}</p>
+                        <div className={styles.statusBadge}>
+                           <span className={getStatusClass(doc.verification_status)}>{doc.verification_status}</span>
+                        </div>
+                        {doc.extracted_text && (
+                            <details className={styles.cardDetails}>
+                                <summary>View Extracted Text</summary>
+                                <pre>{doc.extracted_text.substring(0, 200)}...</pre>
+                            </details>
+                        )}
+                    </div>
+                ))}
             </div>
         </div>
     );
 };
 
 
-
-// --- APP COMPONENT ---
-function App() {
+// --- (App Layout: AppLayout remains exactly the same) ---
+// This is the sidebar and main content for the LOGGED-IN USER
+const AppLayout = () => {
+    // --- (This component's content is unchanged) ---
+    const { user, logout } = useAuth();
+    
     return (
-        <Router>
-            <div className={styles.appContainer}>
-                <aside className={styles.sidebar}>
-                    <div className={styles.sidebarHeader}>
-                        <h2 className={styles.sidebarTitle}>EduVerify</h2>
-                    </div>
-                    <nav className={styles.sidebarNav}>
-                        <NavLink to="/" className={({ isActive }) => isActive ? `${styles.navLink} ${styles.activeLink}` : styles.navLink}>
-                            <HomeIcon />
-                            <span>Home</span>
-                        </NavLink>
-                        <NavLink to="/jobs" className={({ isActive }) => isActive ? `${styles.navLink} ${styles.activeLink}` : styles.navLink}>
-                            <BriefcaseIcon />
-                            <span>Jobs</span>
-                        </NavLink>
-                        <NavLink to="/scholarships" className={({ isActive }) => isActive ? `${styles.navLink} ${styles.activeLink}` : styles.navLink}>
-                            <AcademicCapIcon />
-                            <span>Scholarships</span>
-                        </NavLink>
-                        <NavLink to="/chat" className={({ isActive }) => isActive ? `${styles.navLink} ${styles.activeLink}` : styles.navLink}>
-                            <ChatIcon />
-                            <span>Federated Chat</span>
-                        </NavLink>
-                    </nav>
-                </aside>
-                <main className={styles.mainContent}>
-                    <Routes>
-                        <Route path="/" element={<Home />} />
-                        <Route path="/jobs" element={<JobList />} />
-                        <Route path="/scholarships" element={<ScholarshipList />} />
-                        <Route path="/chat" element={<FederatedChat />} />
-                    </Routes>
-                </main>
-            </div>
-        </Router>
+        <div className={styles.appContainer}>
+            <aside className={styles.sidebar}>
+                <div className={styles.sidebarHeader}>
+                    <h2 className={styles.sidebarTitle}>EduVerify</h2>
+                    {user && <p className={styles.sidebarUser}>Welcome, {user.full_name}</p>}
+                </div>
+                <nav className={styles.nav}>
+                    <NavLink to="/" className={({ isActive }) => isActive ? `${styles.navLink} ${styles.active}` : styles.navLink}>
+                        <HomeIcon />
+                        <span>Home</span>
+                    </NavLink>
+                    <NavLink to="/chat" className={({ isActive }) => isActive ? `${styles.navLink} ${styles.active}` : styles.navLink}>
+                        <ChatIcon />
+                        <span>Federated Chat</span>
+                    </NavLink>
+                </nav>
+                <div className={styles.sidebarFooter}>
+                    <button onClick={logout} className={`${styles.navLink} ${styles.logoutButton}`}>
+                        <LogoutIcon />
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </aside>
+            <main className={styles.mainContent}>
+                <Routes>
+                    <Route path="/" element={<Home />} />
+                    <Route path="/chat" element={<FederatedChat />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+            </main>
+        </div>
     );
-}
+};
+
+
+// --- *** NEW: Main App Component (Top-Level Router) *** ---
+// This is the component that has been refactored.
+const App = () => (
+    <AuthProvider>
+        <Router>
+            <Routes>
+                {/* === ADMIN PORTAL (PUBLIC) === */}
+                <Route path="/portal" element={<AdminLayout />}>
+                    
+                    {/* --- THIS IS THE FIX --- */}
+                    {/* Redirect /portal to /portal/dashboard */}
+                    <Route index element={<Navigate to="/portal/dashboard" replace />} /> 
+                    <Route path="dashboard" element={<AdminHome />} /> 
+                    {/* --- END OF FIX --- */}
+                    
+                    <Route path="chat" element={<AdminChat />} />
+                </Route>
+
+                {/* === AUTH PAGES (PUBLIC) === */}
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+
+                {/* === USER PORTAL (PROTECTED) === */}
+                {/* All other paths "/*" are protected */}
+                <Route path="/*" element={
+                    <ProtectedRoute>
+                        <AppLayout />
+                    </ProtectedRoute>
+                } />
+            </Routes>
+        </Router>
+    </AuthProvider>
+);
 
 export default App;

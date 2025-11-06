@@ -1,103 +1,334 @@
-/* General App Layout */
+/* --- Global Layout --- */
 .appContainer {
-    display: flex;
-    height: 100vh;
-    background-color: #1a202c; /* Equivalent to bg-gray-800 */
-    color: #edf2f7; /* Equivalent to text-gray-200 */
-    font-family: sans-serif;
+  display: flex;
+  height: 100vh;
+  background-color: #1a202c; /* Equivalent to bg-gray-800 */
+  color: #e2e8f0; /* Equivalent to text-gray-200 */
 }
 
-.mainContent {
-    flex-grow: 1;
-    padding: 1.5rem; /* Equivalent to p-6 */
-    overflow-y: auto;
-}
-
-/* Sidebar */
 .sidebar {
-    width: 16rem; /* Equivalent to w-64 */
-    background-color: #111827; /* Equivalent to bg-gray-900 */
-    display: flex;
-    flex-direction: column;
+  width: 16rem; /* w-64 */
+  background-color: #2d3748; /* bg-gray-900 */
+  color: #e2e8f0; /* text-gray-200 */
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebarHeader {
-    padding: 1rem; /* Equivalent to p-4 */
-    border-bottom: 1px solid #374151; /* Equivalent to border-b border-gray-700 */
+  padding: 1rem;
+  border-bottom: 1px solid #4a5568; /* border-gray-700 */
 }
 
 .sidebarTitle {
-    font-size: 1.5rem; /* Equivalent to text-2xl */
-    font-weight: 600; /* Equivalent to font-semibold */
+  font-size: 1.5rem; /* text-2xl */
+  font-weight: 600; /* font-semibold */
 }
 
-/* Navigation */
+.sidebarUser {
+  font-size: 0.875rem;
+  color: #a0aec0; /* text-gray-400 */
+  margin-top: 0.5rem;
+}
+
 .nav {
-    flex-grow: 1;
+  flex-grow: 1;
+  margin-top: 1rem;
 }
 
 .navLink {
-    display: flex;
-    align-items: center;
-    padding: 1rem; /* Equivalent to p-4 */
-    text-decoration: none;
-    color: #d1d5db; /* Lighter gray for text */
-    transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem; /* space-x-3 */
+  padding: 1rem;
+  transition: background-color 0.2s;
+  text-decoration: none;
+  color: #e2e8f0;
 }
 
 .navLink:hover {
-    background-color: #374151; /* Equivalent to hover:bg-gray-700 */
+  background-color: #4a5568; /* hover:bg-gray-700 */
 }
 
-.navLink.activeLink {
-    background-color: #4a5568; /* Equivalent to bg-gray-600 */
-    color: white;
+.navLink.active {
+  background-color: #4299e1; /* active:bg-blue-500 */
+  color: white;
 }
 
-.navLink span {
-    margin-left: 0.75rem; /* Equivalent to space-x-3 */
+.sidebarFooter {
+  padding: 1rem;
+  border-top: 1px solid #4a5568;
+}
+
+.logoutButton {
+  width: 100%;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+.logoutButton:hover {
+  background-color: #c53030; /* hover:bg-red-700 */
+}
+
+.mainContent {
+  flex-grow: 1;
+  padding: 2rem;
+  overflow-y: auto;
 }
 
 .icon {
-    width: 1.5rem; /* Equivalent to h-6 w-6 */
-    height: 1.5rem;
+  height: 1.5rem; /* h-6 */
+  width: 1.5rem; /* w-6 */
 }
 
+/* --- NEW: Auth Pages (Login/Register) --- */
+.authContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100%;
+  background-color: #1a202c;
+}
 
-/* Page Content Placeholder */
-.pageContent {
+.authForm {
+  background-color: #2d3748;
+  padding: 2rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+  width: 100%;
+  max-width: 400px;
+}
+
+.authTitle {
+  font-size: 1.875rem;
+  font-weight: 600;
+  color: white;
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.authError {
+  color: #f56565;
+  background-color: #4c1d1d;
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.inputGroup {
+  margin-bottom: 1rem;
+}
+
+.inputGroup label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #a0aec0;
+  margin-bottom: 0.5rem;
+}
+
+.inputGroup input {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  background-color: #1a202c;
+  color: white;
+  border: 1px solid #4a5568;
+  box-sizing: border-box; /* Important for padding */
+}
+
+.authButton {
+  width: 100%;
+  padding: 0.75rem;
+  border: none;
+  border-radius: 0.375rem;
+  background-color: #4299e1;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.authButton:hover {
+  background-color: #3182ce;
+}
+
+.authButton:disabled {
+  background-color: #4a5568;
+  cursor: not-allowed;
+}
+
+.authLink {
+  margin-top: 1rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: #a0aec0;
+}
+
+.authLink a {
+  color: #4299e1;
+  text-decoration: none;
+}
+.authLink a:hover {
+  text-decoration: underline;
+}
+
+.loadingPage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100%;
+  background-color: #1a202c;
+  color: white;
+  font-size: 1.5rem;
+}
+
+/* --- Home Component (Document List) --- */
+.mainTitle {
+    font-size: 2.25rem; /* text-4xl */
+    font-weight: bold;
+    margin-bottom: 2rem;
     color: white;
 }
-.pageContent h1 {
-    font-size: 2rem;
+
+.divider {
+  border-color: #4a5568;
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.card {
+    background-color: #2d3748; /* bg-gray-700 */
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+    border: 2px solid transparent;
+    transition: border-color 0.2s;
+}
+
+.cardSelected {
+  border-color: #4299e1;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.cardHeader input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.cardTitle {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.cardInfo {
+    color: #a0aec0; /* text-gray-400 */
     margin-bottom: 1rem;
 }
 
+.cardDetails {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+}
+.cardDetails summary {
+  cursor: pointer;
+  color: #63b3ed;
+}
+.cardDetails pre {
+  background-color: #1a202c;
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  margin-top: 0.5rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: #e2e8f0;
+}
 
-/* Chat Interface */
+
+.statusBadge {
+    display: flex;
+}
+.statusBadge span {
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+.verified { background-color: #2f855a; color: #c6f6d5; }
+.pending { background-color: #b7791f; color: #fefcbf; }
+.rejected { background-color: #c53030; color: #fed7d7; }
+
+.infoText { color: #a0aec0; font-size: 1.125rem; }
+.errorText { color: #f56565; font-size: 1.125rem; }
+
+
+/* --- NEW: Upload Form & PDF Generator --- */
+.uploadForm {
+  background-color: #2d3748;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.formTitle {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.selectInput {
+    width: 100%;
+    padding: 0.75rem;
+    border-radius: 0.375rem;
+    background-color: #1a202c;
+    color: white;
+    border: 1px solid #4a5568;
+    box-sizing: border-box;
+}
+
+.uploadForm .inputGroup input[type="file"] {
+  padding: 0;
+}
+
+.pdfGenerator {
+  padding: 1rem;
+  background-color: #2d3748;
+  border-radius: 0.5rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+
+/* --- Federated Chat Component --- */
 .chatContainer {
   display: flex;
   flex-direction: column;
   height: 100%;
-  max-width: 800px;
+  max-width: 900px;
   margin: 0 auto;
   background-color: #2d3748;
   border-radius: 0.5rem;
 }
 
-.studentSelector {
-    padding: 1rem;
-    border-bottom: 1px solid #4a5568;
-}
-
-.selectInput {
-    width: 100%;
-    padding: 0.5rem;
-    border-radius: 0.375rem;
-    background-color: #1a202c;
-    color: white;
-    border: 1px solid #4a5568;
-}
+/* This style was removed, as the student selector is no longer in the chat */
+/* .studentSelector { ... } */
 
 .messageList {
   flex-grow: 1;
@@ -111,7 +342,8 @@
 .message {
   padding: 0.75rem 1rem;
   border-radius: 0.5rem;
-  max-width: 80%;
+  max-width: 90%;
+  line-height: 1.5;
 }
 
 .userMessage {
@@ -140,11 +372,7 @@
   border: 1px solid #4a5568;
   margin-right: 0.5rem;
 }
-
-.textInput:focus {
-    outline: none;
-    border-color: #4299e1;
-}
+.textInput:focus { outline: none; border-color: #4299e1; }
 
 .sendButton {
   background-color: #4299e1;
@@ -154,20 +382,13 @@
   cursor: pointer;
   transition: background-color 0.2s;
 }
-
-.sendButton:hover {
-  background-color: #3182ce;
-}
-
-.sendButton:disabled {
-  background-color: #4a5568;
-  cursor: not-allowed;
-}
+.sendButton:hover { background-color: #3182ce; }
+.sendButton:disabled { background-color: #4a5568; cursor: not-allowed; }
 
 .preformatted {
   font-family: 'Inconsolata', monospace;
   font-size: 0.875rem;
-  white-space: pre-wrap; /* THIS IS THE FIX for long lines */
+  white-space: pre-wrap; /* Fixes long line wrapping */
   word-wrap: break-word;
 }
 
