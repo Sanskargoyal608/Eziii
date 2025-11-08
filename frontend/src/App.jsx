@@ -5,6 +5,8 @@ import styles from './App.module.css';
 import AdminLayout from './components/AdminLayout'; // We will create this
 import AdminHome from './components/AdminHome';   // We will create this
 import AdminChat from './components/AdminChat';   // We will create this
+import JobList from './JobList';
+import ScholarshipList from './ScholarshipList';
 
 
 
@@ -167,9 +169,7 @@ const LoginPage = () => {
     );
 };
 
-// --- (Register Page: RegisterPage remains exactly the same) ---
 const RegisterPage = () => {
-    // --- (This component's content is unchanged) ---
     const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -183,7 +183,7 @@ const RegisterPage = () => {
         setIsLoading(true);
         try {
             await register(fullName, email, password);
-            window.location.href = '/'; // Redirect to home
+            window.location.href = '/'; 
         } catch (err) {
             setError(err.message);
         } finally {
@@ -563,6 +563,8 @@ const App = () => (
                     {/* --- END OF FIX --- */}
                     
                     <Route path="chat" element={<AdminChat />} />
+                    <Route path="joblist" element={<JobList />} />
+                    <Route path="scholarshiplist" element={<ScholarshipList />} />
                 </Route>
 
                 {/* === AUTH PAGES (PUBLIC) === */}
