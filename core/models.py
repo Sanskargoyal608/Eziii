@@ -1,5 +1,5 @@
 from django.db import models
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import make_password, check_password
 
 # This file contains the "blueprint" for your database.
 # Each class represents a table, and each attribute represents a column.
@@ -16,21 +16,57 @@ class Student(models.Model):
         if self.password and not self.password.startswith(('pbkdf2_sha256$', 'bcrypt$', 'argon2')):
             self.password = make_password(self.password)
         super().save(*args, **kwargs)
+    
+    def check_password(self, raw_password):
+        return check_password(raw_password, self.password)
+
 
     class Meta:
         db_table = 'students' # Explicitly name the table
 
     def __str__(self):
         return self.full_name
+    
+    @property
+    def is_authenticated(self):
+        """Always return True for a Student object."""
+        return True
+
+    @property
+    def is_anonymous(self):
+        """Always return False for a Student object."""
+        return False
+
+    @property
+    def is_active(self):
+        """Assume all students in the DB are active."""
+        return True
+    # --- END OF FIX ---
+
+    class Meta:
+        db_table = 'students'
+
+    def __str__(self):
+        return self.full_name
+    
+# --- (Rest of your models: Document, GovtJob, etc.) ---
+# ... (all the code from before) ...
+
+
 
 class Document(models.Model):
     document_id = models.AutoField(primary_key=True)
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    document_type = models.CharField(max_length=50)
+    document_type = models.CharField(max_length=100)
     verification_status = models.CharField(max_length=20, default='Pending')
-    # ADD THIS LINE:
     issue_date = models.DateField(null=True, blank=True)
     verified_data = models.JSONField(null=True, blank=True)
+    
+    # --- NEW FIELDS ---
+    # Stores the path to the uploaded file (e.g., "uploads/student_1/aadhar.pdf")
+    uploaded_file = models.FileField(upload_to='uploads/', null=True, blank=True)
+    # Stores the text extracted by OCR/PDF-parsing
+    extracted_text = models.TextField(null=True, blank=True)
 
     class Meta:
         db_table = 'documents'
@@ -81,4 +117,7 @@ class Scholarship(models.Model):
 
     def __str__(self):
         return self.scholarship_name
+    
+
+
 

@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -36,6 +37,7 @@ ALLOWED_HOSTS = [
 # Application definition
 
 INSTALLED_APPS = [
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -45,6 +47,7 @@ INSTALLED_APPS = [
     'core.apps.CoreConfig',
     'rest_framework',
     'corsheaders',
+    'rest_framework_simplejwt',
 ]
 
 MIDDLEWARE = [
@@ -57,6 +60,17 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'core.authentication.CustomJWTAuthentication', 
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        # This makes all endpoints protected by default.
+        # We will manually set Register to be public.
+        'rest_framework.permissions.IsAuthenticated', 
+    ],
+}
 
 ROOT_URLCONF = 'eduverify_backend.urls'
 
@@ -136,3 +150,23 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+
+    # 1. Tells RefreshToken.for_user() to look for 'student.student_id'
+    'USER_ID_FIELD': 'student_id', 
+    # 2. Tells the token to store the ID under the claim 'student_id'
+    'USER_ID_CLAIM': 'student_id',
+}
+MEDIA_URL = '/media/'
+
+# This is the absolute path on your hard drive where files will be saved
+# os.path.join(BASE_DIR, 'media') means it will create a 'media' folder
+# in your main project directory (E:\Ezii\media)
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
