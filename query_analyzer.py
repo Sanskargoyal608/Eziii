@@ -61,7 +61,7 @@ def analyze_and_decompose_query_with_llm(query_text):
 
     ### Data Source Schema ###
     1.  **primary_db**: Handles student-specific data (intents: "GET_DOCUMENTS").
-    2.  **secondary_db**: Handles general opportunity data (intents: "GET_JOBS", "GET_SCHOLARSHIPS").
+    2.  **secondary_db**: Handles general opportunity data (intents: "GET_JOBS").
     3.  **llm_service**: Handles complex analysis (intents: "ANALYZE_SKILLS").
 
     ### Instructions ###
@@ -75,9 +75,6 @@ def analyze_and_decompose_query_with_llm(query_text):
 
     Query: "what skills do I need for a data scientist position"
     Output: {{"user_name": null, "intents": [{{"target": "ANALYZE_SKILLS", "params": {{"job_title": "data scientist"}}}}]}}
-
-    Query: "find documents for John Holt and show me scholarships he is eligible for"
-    Output: {{"user_name": "John Holt", "intents": [{{"target": "GET_DOCUMENTS", "params": {{}}}}, {{"target": "GET_SCHOLARSHIPS", "params": {{"filter_by_eligibility": true}}}}]}}
 
     Query: "How many jobs are there?"
     Output: {{"user_name": null, "intents": [{{"target": "GET_JOBS", "params": {{"aggregate": "count"}}}}]}}
@@ -152,28 +149,6 @@ def execute_query_plan(plan, student_id=None):
 
             except requests.exceptions.RequestException as e:
                 final_results['jobs'] = {"error": f"Failed to fetch jobs from partner API: {e}"}
-
-        elif intent == "GET_SCHOLARSHIPS":
-            endpoint = f'http://{PARTNER_IP}:5000/api/scholarships'
-            try:
-                print(f"Making REAL API call to: {endpoint}")
-                response = requests.get(endpoint, timeout=10)
-                response.raise_for_status()
-                all_scholarships = response.json()
-
-                if params.get("filter_by_eligibility") and student_id:
-                    qualifications = get_student_qualifications(student_id)
-                    eligible_scholarships = [
-                        s for s in all_scholarships
-                        if qualifications.get('highest_percentage', 0) >= s.get('eligibility_criteria', {}).get('min_percentage', 101)
-                        and qualifications.get('income', float('inf')) <= s.get('eligibility_criteria', {}).get('max_income_pa', -1)
-                    ]
-                    final_results['scholarships'] = eligible_scholarships
-                else:
-                    final_results['scholarships'] = all_scholarships
-            
-            except requests.exceptions.RequestException as e:
-                final_results['scholarships'] = {"error": f"Failed to fetch scholarships from partner API: {e}"}
 
         elif intent == "GET_DOCUMENTS":
             # ... (this part remains the same)

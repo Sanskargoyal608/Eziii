@@ -29,17 +29,24 @@ export const JobList = () => {
 
   return (
     <div className={styles.listContainer}>
-      <h2 className={styles.listTitle}>Available Government Jobs</h2>
+      <h2 className={styles.listTitle}>Available Jobs</h2>
       {loading && <p>Loading jobs...</p>}
       {error && <p className={styles.errorText}>{error}</p>}
       {!loading && !error && jobs.map((job) => (
         <div key={job.job_id} className={styles.card}>
-          <h3 className={styles.cardTitle}>{job.title}</h3>
-          <p className={styles.cardSubtitle}>{job.department} - {job.location}</p>
-          <p className={styles.cardDescription}>{job.description}</p>
+          <h3 className={styles.cardTitle}>{job.job_title}</h3>
+          <p className={styles.cardCompany}>Company: {job.company_name ? job.company_name : 'N/A'}</p>
+          <p className={styles.cardLocation}>Location: {job.location ? job.location : 'N/A'}</p>
+          <p className={styles.cardPostedDate}>Posted: {job.posted_date ? job.posted_date : 'N/A'}</p>
+          <p className={styles.cardDescription}>
+            {job.job_description ? job.job_description : 'No description available'}
+          </p>
           <div className={styles.cardFooter}>
-            <span>Closes on: {job.closing_date}</span>
-            <a href={job.url} target="_blank" rel="noopener noreferrer" className={styles.applyButton}>View Details</a>
+            {job.source_url && (
+              <a href={job.source_url} target="_blank" rel="noopener noreferrer" className={styles.applyButton}>
+                View Details
+              </a>
+            )}
           </div>
         </div>
       ))}

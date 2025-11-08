@@ -94,27 +94,12 @@ def generate_jobs(num_jobs=75):
             source_url=fake.url()
         )
 
-def generate_scholarships(num_scholarships=50):
-    """Generates fake scholarship opportunities."""
-    print(f"Generating {num_scholarships} scholarships...")
-    for _ in range(num_scholarships):
-        Scholarship.objects.create(
-            scholarship_name=f"{fake.company()} Educational Scholarship", # CORRECTED from 'name'
-            description=fake.paragraph(nb_sentences=4),
-            eligibility_criteria={
-                'min_percentage': random.randint(75, 90),
-                'max_income_pa': random.choice([250000, 500000, 800000])
-            },
-            amount=random.randint(5000, 50000)
-        )
-
 def main():
     """Main function to run the seeding process."""
     clear_data()
     students_list = generate_students()
     generate_documents(students_list)
     generate_jobs()
-    generate_scholarships()
     print("✅ Database seeding successful!")
 
 if __name__ == '__main__':

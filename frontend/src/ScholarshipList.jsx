@@ -34,14 +34,12 @@ export const ScholarshipList = () => {
       {!loading && !error && scholarships.map((scholarship) => (
         <div key={scholarship.scholarship_id} className={styles.card}>
           <div className={styles.cardHeader}>
-            <h3 className={styles.cardTitle}>{scholarship.name}</h3>
-            <span className={styles.amount}>${scholarship.amount.toLocaleString()}</span>
+            <h3 className={styles.cardTitle}>{scholarship.scholarship_name}</h3>
           </div>
-          <p className={styles.cardSubtitle}>{scholarship.provider}</p>
           <p className={styles.cardDescription}>{scholarship.description}</p>
           <div className={styles.cardFooter}>
-            <span>Apply by: {scholarship.deadline}</span>
-            <a href={scholarship.url} target="_blank" rel="noopener noreferrer" className={styles.applyButton}>Learn More</a>
+            <p className={styles.cardDescription}>Eligibility: {scholarship.eligibility_criteria}</p>
+            <a href="#" target="_blank" rel="noopener noreferrer" className={styles.applyButton}>Learn More</a>
           </div>
         </div>
       ))}

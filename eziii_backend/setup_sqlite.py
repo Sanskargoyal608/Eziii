@@ -1,4 +1,3 @@
-# e:\Eziii\setup_sqlite.py
 import sqlite3
 import os
 
@@ -7,8 +6,8 @@ DB_FILE = "federated_data.db"
 def create_database():
     """Creates the SQLite database and the required tables if they don't exist."""
     if os.path.exists(DB_FILE):
-        print(f"Database file '{DB_FILE}' already exists. Skipping creation.")
-        return
+        os.remove(DB_FILE)
+        print(f"Removed existing database file '{DB_FILE}'.")
 
     # The 'with' statement ensures the connection is automatically closed.
     try:
@@ -21,13 +20,13 @@ def create_database():
             cursor.execute("""
             CREATE TABLE govt_jobs (
                 job_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                department TEXT NOT NULL,
+                job_title TEXT NOT NULL,
+                job_description TEXT,
+                company_name TEXT,
                 location TEXT,
-                posted_date DATE NOT NULL,
-                closing_date DATE NOT NULL,
-                description TEXT,
-                url TEXT
+                posted_date TEXT,
+                source_url TEXT,
+                eligibility_criteria TEXT
             );
             """)
             print("Table 'govt_jobs' created successfully.")
@@ -37,13 +36,9 @@ def create_database():
             cursor.execute("""
             CREATE TABLE scholarships (
                 scholarship_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                provider TEXT NOT NULL,
-                eligibility TEXT,
-                amount INTEGER,
-                deadline DATE NOT NULL,
+                scholarship_name TEXT NOT NULL,
                 description TEXT,
-                url TEXT
+                eligibility_criteria TEXT
             );
             """)
             print("Table 'scholarships' created successfully.")
@@ -54,3 +49,4 @@ def create_database():
 
 if __name__ == "__main__":
     create_database()
+

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import styles from './Home.module.css'; // Using a dedicated CSS module
+import styles from './Home.module.css'; 
 
 export const Home = () => {
     const [documents, setDocuments] = useState([]);
