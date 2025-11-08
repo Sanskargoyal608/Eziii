@@ -5,6 +5,10 @@ import styles from './App.module.css';
 import AdminLayout from './components/AdminLayout'; // We will create this
 import AdminHome from './components/AdminHome';   // We will create this
 import AdminChat from './components/AdminChat';   // We will create this
+// --- NEW: Import the new components ---
+import { JobList } from './JobList';
+import { ScholarshipList } from './ScholarshipList';
+// ---
 
 
 
@@ -20,6 +24,14 @@ const SendIcon = () => (
 );
 const LogoutIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className={styles.icon} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+);
+
+// --- NEW: Icons for Jobs and Scholarships ---
+const JobsIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={styles.icon} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 13V6a2 2 0 00-2-2H8a2 2 0 00-2 2v7m12 0v5a2 2 0 01-2 2H8a2 2 0 01-2-2v-5m12 0h-2.586a1 1 0 00-.707.293l-1.414 1.414a1 1 0 01-1.414 0l-1.414-1.414a1 1 0 00-.707-.293H8m10 0z" /></svg>
+);
+const ScholarshipIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={styles.icon} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5zm0 0v-5.5M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-5.5m0 5.5v-5.5m0 5.5l4-2.222" /></svg>
 );
 
 import { apiFetch } from './api';
@@ -527,6 +539,19 @@ const AppLayout = () => {
                         <ChatIcon />
                         <span>Federated Chat</span>
                     </NavLink>
+                    {/* --- NEW Link 3: Jobs --- */}
+                    <NavLink to="/jobs" className={({ isActive }) => isActive ? `${styles.navLink} ${styles.active}` : styles.navLink}>
+                        <JobsIcon />
+                        <span>Jobs</span>
+                    </NavLink>
+
+                    {/* --- NEW Link 4: Scholarships --- */}
+                    <NavLink to="/scholarships" className={({ isActive }) => isActive ? `${styles.navLink} ${styles.active}` : styles.navLink}>
+                        <ScholarshipIcon />
+                        <span>Scholarships</span>
+                    </NavLink>
+
+
                 </nav>
                 <div className={styles.sidebarFooter}>
                     <button onClick={logout} className={`${styles.navLink} ${styles.logoutButton}`}>
@@ -540,6 +565,8 @@ const AppLayout = () => {
                     <Route path="/" element={<Home />} />
                     <Route path="/chat" element={<FederatedChat />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
+                    <Route path="/jobs" element={<JobList />} />
+                    <Route path="/scholarships" element={<ScholarshipList />} />
                 </Routes>
             </main>
         </div>
@@ -563,6 +590,7 @@ const App = () => (
                     {/* --- END OF FIX --- */}
                     
                     <Route path="chat" element={<AdminChat />} />
+
                 </Route>
 
                 {/* === AUTH PAGES (PUBLIC) === */}
