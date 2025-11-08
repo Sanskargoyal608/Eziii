@@ -1,0 +1,5 @@
+Flask
+kagglehub
+pandas
+openpyxl
+Flask-Cors

@@ -84,12 +84,28 @@ def generate_documents(students_list):
                 verified_data=None 
             )
             
+def generate_jobs(num_jobs=75):
+    """Generates fake government job postings."""
+    print(f"Generating {num_jobs} jobs...")
+    degrees = ['B.Tech', 'Diploma', 'B.Sc', 'M.Tech']
+    for _ in range(num_jobs):
+        GovtJob.objects.create(
+            job_title=fake.job() + " (Government Sector)",
+            job_description=fake.paragraph(nb_sentences=5),
+            eligibility_criteria={
+                'degree_required': random.choice(degrees),
+                'min_cgpa': round(random.uniform(6.0, 8.0), 1)
+            },
+            source_url=fake.url()
+        )
+
 def main():
     """Main function to run the seeding process."""
     clear_data()
     students_list = generate_students()
     generate_documents(students_list)
-    print("✅ Database seeding successful with improved data!")
+    generate_jobs()
+    print("✅ Database seeding successful!")
 
 if __name__ == '__main__':
     main()
