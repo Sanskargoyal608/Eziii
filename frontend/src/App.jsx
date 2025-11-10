@@ -585,9 +585,9 @@ const App = () => (
                     {/* Redirect /portal to /portal/dashboard */}
                     <Route index element={<Navigate to="/portal/dashboard" replace />} /> 
                     <Route path="dashboard" element={<AdminHome />} /> 
-                    {/* --- END OF FIX --- */}
-                    
                     <Route path="chat" element={<AdminChat />} />
+                    <Route path="jobs" element={<JobList />} />
+                    <Route path="scholarships" element={<ScholarshipList />} />
 
                 </Route>
 

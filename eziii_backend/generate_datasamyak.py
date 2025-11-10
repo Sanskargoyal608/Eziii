@@ -18,11 +18,15 @@ def populate_sqlite_data():
             print(f"Loading data from '{CSV_FILE}'...")
             try:
                 df = pd.read_csv(CSV_FILE)
+                df.columns = df.columns.str.strip()
                 print("Data loaded successfully.")
             except FileNotFoundError:
                 print(f"ERROR: The file '{CSV_FILE}' was not found in the 'e:\\Eziii\\eziii_backend' directory.")
                 print("Please download the CSV file from Kaggle and place it in that directory.")
                 return
+
+            cursor.execute("DELETE FROM govt_jobs")
+            print("Cleared existing data from 'govt_jobs'.")
 
             # --- Populate govt_jobs table ---
             jobs_to_insert = []
@@ -31,17 +35,24 @@ def populate_sqlite_data():
                 job_title = row.get('Job Title')
                 if job_title and isinstance(job_title, str) and job_title.strip():
                     eligibility_criteria = {
-                        "skills": row.get('Skills'),
-                        "experience": row.get('Experience'),
-                        "salary": row.get('Salary')
+                        "skills": row.get('Key Skills') if not pd.isna(row.get('Key Skills')) else None,
+                        "experience": row.get('Job Experience Required') if not pd.isna(row.get('Job Experience Required')) else None,
+                        "salary": row.get('Job Salary') if not pd.isna(row.get('Job Salary')) else None
                     }
+                    
+                    # Construct job_description from other fields
+                    job_description = (
+                        f"Functional Area: {row.get('Functional Area', 'N/A')}, "
+                        f"Industry: {row.get('Industry', 'N/A')}, "
+                        f"Role: {row.get('Role', 'N/A')}"
+                    )
+                    
                     jobs_to_insert.append((
                         job_title,
-                        row.get('Job Description'),
-                        row.get('Company Name'), # Assuming 'Company Name' column in CSV
-                        row.get('Location'),     # Assuming 'Location' column in CSV
-                        row.get('Posted Date'),  # Assuming 'Posted Date' column in CSV
-                        row.get('URL'),
+                        job_description,
+                        row.get('Location'),
+                        row.get('Crawl Timestamp'),  # Use Crawl Timestamp for posted_date
+                        "https://www.naukri.com/",
                         json.dumps(eligibility_criteria)
                     ))
                 else:
@@ -51,8 +62,8 @@ def populate_sqlite_data():
                 print(f"Skipped {skipped_rows} rows due to missing job title.")
 
             cursor.executemany("""
-            INSERT INTO govt_jobs (job_title, job_description, company_name, location, posted_date, source_url, eligibility_criteria)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO govt_jobs (job_title, job_description, location, posted_date, source_url, eligibility_criteria)
+            VALUES (?, ?, ?, ?, ?, ?)
             """, jobs_to_insert)
             print(f"Inserted {len(jobs_to_insert)} records into 'govt_jobs'.")
 

@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated # Import permissions
-from .models import Document, Student
+from .models import Document, Student, GovtJob
 from rest_framework.permissions import AllowAny, IsAuthenticated 
 from rest_framework.parsers import MultiPartParser, FormParser
 from .serializers import DocumentSerializer, StudentSerializer , DocumentUploadSerializer, StudentRegistrationSerializer
@@ -26,6 +26,7 @@ from django.http import HttpResponse
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
+
 
 class RegisterView(APIView):
     permission_classes = [AllowAny] # Anyone can register

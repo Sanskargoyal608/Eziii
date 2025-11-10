@@ -45,18 +45,18 @@ const AdminLayout = () => {
                         <span>Admin Chat</span>
                     </NavLink>
                     <NavLink 
-                        to="/portal/joblist" 
+                        to="/portal/jobs" 
                         className={({ isActive }) => isActive ? `${styles.navLink} ${styles.active}` : styles.navLink}
                     >
                         <JobListIcon />
-                        <span>Job List</span>
+                        <span>Jobs</span>
                     </NavLink>
                     <NavLink 
-                        to="/portal/scholarshiplist" 
+                        to="/portal/scholarships" 
                         className={({ isActive }) => isActive ? `${styles.navLink} ${styles.active}` : styles.navLink}
                     >
                         <ScholarshipListIcon />
-                        <span>Scholarship List</span>
+                        <span>Scholarships</span>
                     </NavLink>
                 </nav>
                 {/* ... (footer is the same) ... */}
