@@ -111,28 +111,36 @@ class DocumentUploadView(APIView):
             document = serializer.save()
             
             if document.uploaded_file:
-                file_relative_path = document.uploaded_file.name
-                extracted_text = extract_text_from_file(file_relative_path)
-                
-                # --- THIS IS THE FIX ---
-                if not extracted_text:
-                    # Case 1: The function returned empty string (e.g., blank PDF)
-                    document.extracted_text = "No text could be extracted from this document."
-                    print("Warning: No text extracted.")
-                elif extracted_text.startswith("Error extracting text:"):
-                    # Case 2: The function returned an error message
-                    document.extracted_text = extracted_text
-                    print(f"Error: {extracted_text}")
-                else:
-                    # Case 3: Success
-                    document.extracted_text = extracted_text
-                    print("Extracted text saved to document.")
-                
-                document.save() # Save the result (success, error, or empty)
-                # --- END OF FIX ---
-            
-            return Response(DocumentSerializer(document).data, status=status.HTTP_201_CREATED)
+                # --- NEW LOGIC ---
+                HIGH_VALUE_DOCS = [
+                    'Resume', '10th Marksheet', '12th Marksheet', 
+                    'B.Tech Marksheet', 'Income Certificate'
+                ]
         
+                if document.document_type in HIGH_VALUE_DOCS:
+                    print(f"High-value document '{document.document_type}' detected. Running extraction...")
+        
+                    # 1. Extract raw text (uses your existing utils.py)
+                    extracted_text = extract_text_from_file(document.uploaded_file.name)
+        
+                    if not extracted_text or extracted_text.startswith("Error"):
+                        document.extracted_text = extracted_text or "No text found."
+                    else:
+                        document.extracted_text = extracted_text
+        
+                        # 2. Parse text AND update the profile (ETL)
+                        from query_analyzer import update_profile_from_text # We will create this
+                        update_profile_from_text(request.user, document.document_type, extracted_text)
+        
+                else:
+                    # This is a low-value doc like Aadhar. We don't extract text.
+                    print(f"Low-value document '{document.document_type}'. Skipping text extraction.")
+                    document.extracted_text = "Text extraction not required for this document type."
+        
+                document.save()
+                # --- END OF REPLACEMENT ---
+        
+            return Response(DocumentSerializer(document).data, status=status.HTTP_201_CREATED)
         print(f"Serializer errors: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

@@ -4,14 +4,19 @@ import re
 import os
 import json
 from dotenv import load_dotenv
-from core.models import Student, Document
+from core.models import Student, Document, StudentProfile
+from django.db.models import Avg, Count
 
 # --- Load Environment Variables ---
 load_dotenv()
 
 # --- IMPORTANT ---
-PARTNER_IP = "192.168.1.107"  # Replace with your partner's actual local IP
+PARTNER_IP = "192.168.52.109"  # Your partner's local IP
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# ==============================================================================
+# 1. FINAL RESPONSE SUMMARIZATION
+# ==============================================================================
 
 def summarize_results_with_llm(results, original_query):
     """
@@ -63,7 +68,6 @@ def summarize_results_with_llm(results, original_query):
         response.raise_for_status()
         result = response.json()
         
-        # Extract the text and wrap it in a simple JSON for the frontend
         text_response = result['candidates'][0]['content']['parts'][0]['text']
         return {"response_text": text_response}
     
@@ -71,101 +75,106 @@ def summarize_results_with_llm(results, original_query):
         print(f"ERROR: LLM Summarization failed. {e}")
         return {"response_text": f"Sorry, I encountered an error while processing the results: {e}"}
 
+# ==============================================================================
+# 2. ETL & PROFILE MANAGEMENT (Extract, Transform, Load)
+# ==============================================================================
 
-
-# --- NEW: LLM Helper for parsing extracted text ---
-def parse_qualifications_from_text(text, doc_type):
+def update_profile_from_text(student, doc_type, text):
     """
-    Uses the LLM to parse raw extracted text from a document
-    into a structured JSON of qualifications.
+    Parses raw text from a document AND updates the student's
+    structured StudentProfile in the database.
     """
-    print(f"--- Parsing raw text from {doc_type} with LLM ---")
-    if not GEMINI_API_KEY:
-        return {}
+    print(f"--- Updating Profile for {student.full_name} from {doc_type} ---")
+    if not GEMINI_API_KEY: 
+        return
 
-    # Define the extraction goal based on document type
-    if "marksheet" in doc_type.lower() or "certificate" in doc_type.lower():
-        extraction_prompt = "Extract the final 'percentage' (float) or 'cgpa' (float). If CGPA, convert it to percentage (CGPA * 9.5). Return as JSON: {\"percentage\": 85.2}"
+    # 1. Define the extraction goal based on document type
+    if "marksheet" in doc_type.lower():
+        extraction_prompt = "Extract the final 'percentage' (float) and 'degrees' (list of strings)."
+        json_format = "{\"percentage\": 85.2, \"degrees\": [\"B.Tech\"]}"
     elif "income" in doc_type.lower():
-        extraction_prompt = "Extract the final 'income' (integer) value. Return as JSON: {\"income\": 500000}"
+        extraction_prompt = "Extract the final 'income' (integer) value."
+        json_format = "{\"income\": 500000}"
+    elif "resume" in doc_type.lower():
+        extraction_prompt = "Extract all 'skills' (list of strings)."
+        json_format = "{\"skills\": [\"Python\", \"React\", \"Data Analysis\"]}"
     else:
-        return {} # Not a document type we can parse for qualifications
+        return # Not a type we parse
 
     prompt = f"""
     You are a data extraction tool. From the following raw text from a {doc_type},
-    perform the following task: {extraction_prompt}
-    
-    Raw Text:
-    "{text[:1000]}"
-
-    Return ONLY the JSON output.
+    perform the task: {extraction_prompt}
+    Raw Text: "{text[:1500]}"
+    Return ONLY a JSON output in this format: {json_format}
+    If nothing is found, return {{}}.
     Output:
     """
-
+    
+    # 2. Call LLM to get structured JSON
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "responseMimeType": "application/json"
-        }
+        "generationConfig": {"responseMimeType": "application/json"}
     }
-
+    
     try:
-        response = requests.post(api_url, json=payload, timeout=15)
+        response = requests.post(api_url, json=payload, timeout=20)
         response.raise_for_status()
         result = response.json()
         text_response = result['candidates'][0]['content']['parts'][0]['text']
-        cleaned_text = text_response.strip().replace('```json', '').replace('```', '')
-        parsed_data = json.loads(cleaned_text)
-        print(f"LLM parsed data: {parsed_data}")
-        return parsed_data
+        
+        # Clean and parse the JSON (Fix for None vs null)
+        text_response = text_response.replace("None", "null")
+        start = text_response.find('{')
+        end = text_response.rfind('}') + 1
+        if start == -1 or end == 0: 
+            raise ValueError("No JSON object found in response")
+        cleaned_json_text = text_response[start:end]
+        parsed_data = json.loads(cleaned_json_text)
+        
+        # 3. Get or Create the profile
+        profile, created = StudentProfile.objects.get_or_create(student=student)
+        
+        # 4. Save the structured data to the StudentProfile model
+        if "percentage" in parsed_data and parsed_data["percentage"]:
+            profile.highest_percentage = max(profile.highest_percentage or 0, float(parsed_data["percentage"]))
+        if "income" in parsed_data and parsed_data["income"]:
+            profile.annual_income = int(parsed_data["income"])
+        if "degrees" in parsed_data and parsed_data["degrees"]:
+            profile.degrees = list(set((profile.degrees or []) + parsed_data["degrees"])) # Merge lists
+        if "skills" in parsed_data and parsed_data["skills"]:
+            profile.verified_skills = list(set((profile.verified_skills or []) + parsed_data["skills"])) # Merge lists
+            
+        profile.save()
+        print(f"Profile for {student.full_name} updated successfully: {parsed_data}")
+        
     except Exception as e:
-        print(f"ERROR: LLM parsing of extracted text failed: {e}")
-        return {}
+        print(f"ERROR: LLM Profile update failed: {e}")
 
-# --- UPDATED Helper function to get qualifications ---
 def get_student_qualifications(student_id):
     """
-    Fetches and consolidates verified qualifications for a given student.
-    It now checks verified_data first, then falls back to parsing extracted_text.
+    Fetches the pre-structured qualifications from the database.
+    No LLM calls.
     """
     if not student_id: return {}
-    qualifications = {'income': None, 'degrees': set(), 'highest_percentage': 0.0}
-    
-    # We only trust 'Verified' documents for eligibility
-    verified_docs = Document.objects.filter(student_id=student_id, verification_status='Verified')
-    print(f"Found {len(verified_docs)} verified documents for student {student_id}.")
-    
-    for doc in verified_docs:
-        data_to_use = None
-        
-        if doc.verified_data:
-            # 1. Prioritize clean, structured data if it exists (from dummy data)
-            print(f"Using 'verified_data' for doc {doc.document_id}")
-            data_to_use = doc.verified_data
-        elif doc.extracted_text:
-            # 2. Fallback: If no structured data, parse the raw text
-            print(f"Using 'extracted_text' for doc {doc.document_id}")
-            data_to_use = parse_qualifications_from_text(doc.extracted_text, doc.document_type)
+    try:
+        profile = StudentProfile.objects.get(student_id=student_id)
+        qualifications = {
+            'income': profile.annual_income,
+            'degrees': profile.degrees,
+            'highest_percentage': profile.highest_percentage,
+            'skills': profile.verified_skills
+        }
+        print(f"Fetched structured qualifications: {qualifications}")
+        return qualifications
+    except StudentProfile.DoesNotExist:
+        print(f"No profile found for student {student_id}")
+        return {}
 
-        if data_to_use:
-            if 'income' in data_to_use: 
-                qualifications['income'] = data_to_use['income']
-            
-            if 'percentage' in data_to_use: 
-                qualifications['highest_percentage'] = max(qualifications['highest_percentage'], data_to_use['percentage'])
-            
-            # Simple degree check (can be expanded)
-            if 'B.Tech Certificate' in doc.document_type: 
-                qualifications['degrees'].add('B.Tech')
-            if 'Diploma Certificate' in doc.document_type: 
-                qualifications['degrees'].add('Diploma')
+# ==============================================================================
+# 3. QUERY DECOMPOSITION (LLM)
+# ==============================================================================
 
-    qualifications['degrees'] = list(qualifications['degrees'])
-    print(f"Final qualifications for student {student_id}: {qualifications}")
-    return qualifications
-
-# --- UPDATED: analyze_and_decompose_query_with_llm ---
 def analyze_and_decompose_query_with_llm(query_text):
     """
     Uses a schema-grounded LLM to analyze a natural language query and decompose it 
@@ -178,37 +187,44 @@ def analyze_and_decompose_query_with_llm(query_text):
     
     prompt = f"""
     You are a query decomposition engine. Your job is to analyze the user's query and convert it into a structured JSON plan.
-    If the query is conversational (e.g., "Hello"), return an empty intents list.
-    If the query asks for general data (e.g., "show my data", "SHow me my documents"), interpret it as a "GET_DOCUMENTS" intent with no filters.
-    Identify the user's name, all intents, and any filters, aggregations, or eligibility requirements.
+    You have access to two main data sources:
+    1.  DOCUMENT_FILES: The user's uploaded files (e.g., "resume", "aadhar card").
+    2.  STUDENT_PROFILES: Structured data extracted from documents (e.g., skills, income, percentage).
 
     ### Schema & Intents ###
-    - "GET_DOCUMENTS": Fetches student documents. Can be filtered by "verification_status".
+    
+    # Use this for queries about FILES
+    - "GET_DOCUMENTS": Fetches *files*. Use for queries about 'resume', 'marksheet file', 'aadhar'.
+        - 'params': {{"aggregate": "count", "value": "resume"}} (for "how many resumes")
+        - 'params': {{"verification_status": "Verified"}} (for "which documents are verified")
+
+    # Use this for queries about structured DATA
+    - "ANALYZE_PROFILES": Analyzes *student data*. Use for queries about 'skills', 'income', 'percentage'.
+        - 'params': {{"aggregate": "average", "field": "highest_percentage"}} (for "what is the average percentage")
+        - 'params': {{"aggregate": "count", "field": "skills", "value": "Python"}} (for "how many students know Python")
+
     - "GET_JOBS": Fetches job listings.
     - "GET_SCHOLARSHIPS": Fetches scholarship listings.
-    - "ANALYZE_SKILLS": Analyzes skills for a job.
-
+    
     ### Examples ###
-    Query: "which documents of mine are verified"
-    Output: {{"user_name": None, "intents": [{{"target": "GET_DOCUMENTS", "params": {{"verification_status": "Verified"}}}}]}}
+    Query: "what is the average class 12% of all students"
+    Output: {{"user_name": null, "intents": [{{"target": "ANALYZE_PROFILES", "params": {{"aggregate": "average", "field": "highest_percentage"}}}}]}}
 
-    Query: "Show me all scholarships"
-    Output: {{"user_name": None, "intents": [{{"target": "GET_SCHOLARSHIPS", "params": {{}}}}]}}
+    Query: "how many students know Python"
+    Output: {{"user_name": null, "intents": [{{"target": "ANALYZE_PROFILES", "params": {{"aggregate": "count", "field": "skills", "value": "Python"}}}}]}}
+
+    Query: "which documents of mine are verified"
+    Output: {{"user_name": null, "intents": [{{"target": "GET_DOCUMENTS", "params": {{"verification_status": "Verified"}}}}]}}
+
+    # --- THIS IS THE CRITICAL NEW EXAMPLE ---
+    Query: "how many students have a resume uploaded"
+    Output: {{"user_name": null, "intents": [{{"target": "GET_DOCUMENTS", "params": {{"aggregate": "count", "value": "resume"}}}}]}}
+
+    Query: "show me my resume"
+    Output: {{"user_name": null, "intents": [{{"target": "GET_DOCUMENTS", "params": {{"value": "resume"}}}}]}}
 
     Query: "Which scholarship or job am I eligible in"
-    Output: {{"user_name": None, "intents": [{{"target": "GET_JOBS", "params": {{"filter_by_eligibility": true}}}}, {{"target": "GET_SCHOLARSHIPS", "params": {{"filter_by_eligibility": true}}}}]}}
-
-    Query: "How many jobs are there?"
-    Output: {{"user_name": None, "intents": [{{"target": "GET_JOBS", "params": {{"aggregate": "count"}}}}]}}
-    
-    Query: "show my data"
-    Output: {{"user_name": None, "intents": [{{"target": "GET_DOCUMENTS", "params": {{}}}}]}}
-    
-    Query: "SHow me my documents"
-    Output: {{"user_name": None, "intents": [{{"target": "GET_DOCUMENTS", "params": {{}}}}]}}
-    
-    Query: "Hello"
-    Output: {{"user_name": None, "intents": []}}
+    Output: {{"user_name": null, "intents": [{{"target": "GET_JOBS", "params": {{"filter_by_eligibility": true}}}}, {{"target": "GET_SCHOLARSHIPS", "params": {{"filter_by_eligibility": true}}}}]}}
 
     ### User Query ###
     Query: "{query_text}"
@@ -234,15 +250,15 @@ def analyze_and_decompose_query_with_llm(query_text):
 
         text_response = result['candidates'][0]['content']['parts'][0]['text']
         
-        # --- NEW ROBUST JSON PARSING ---
+        # --- ROBUST JSON PARSING ---
+        text_response = text_response.replace("None", "null") # Fix Python None vs JSON null
+        
         try:
-            # 1. First, try to load it directly
             plan = json.loads(text_response)
             print(f"LLM generated plan (direct): {plan}") 
             return plan
         except json.JSONDecodeError:
             print("Direct JSON load failed. Attempting to clean response...")
-            # 2. If it fails, find the first '{' and last '}'
             try:
                 start = text_response.find('{')
                 end = text_response.rfind('}') + 1
@@ -254,103 +270,30 @@ def analyze_and_decompose_query_with_llm(query_text):
                 print(f"LLM generated plan (cleaned): {plan}") 
                 return plan
             except Exception as e:
-                # If cleaning also fails, log the bad text and return an error
                 print(f"ERROR: LLM returned invalid JSON. Cleaning failed. Error: {e}")
                 print(f"--- LLM Raw Response Text ---")
                 print(text_response)
                 print(f"--- End of Raw Response ---")
                 return {"error": f"LLM returned invalid JSON: {text_response}"}
-        # --- END OF NEW PARSING ---
 
     except Exception as e:
         print(f"ERROR: LLM API call failed. {e}")
         return {"error": f"Could not get a valid plan from the LLM: {e}"}
 
-# --- END OF REPLACEMENT ---
+# ==============================================================================
+# 4. QUERY EXECUTION (The "Smart Filter")
+# ==============================================================================
 
-# --- UPDATED: filter_items_with_llm ---
-def filter_items_with_llm(items, qualifications, item_type):
-    """
-    Uses a single LLM call to filter a list of items based on qualifications.
-    """
-    print(f"--- Filtering {len(items)} {item_type}s with a single LLM call ---")
-    if not items or not qualifications: return []
-    if not GEMINI_API_KEY: return {"error": "GEMINI_API_KEY not found."}
-
-    items_json_string = json.dumps(items, indent=2)
-    
-    if item_type == 'jobs':
-        eligibility_field = "'description'" 
-        eligibility_logic = """
-        A student is eligible for a job if their CGPA (highest_percentage / 10) is >= the job's 'min_cgpa',
-        AND their degree (from 'degrees' list) matches the job's 'degree_required'.
-        Extract 'min_cgpa' (float) and 'degree_required' (string) from the unstructured text in the 'description' field.
-        """
-    else: # scholarships
-        eligibility_field = "'eligibility'" 
-        eligibility_logic = """
-        A student is eligible for a scholarship if their 'highest_percentage' is >= the scholarship's 'min_percentage',
-        AND their 'income' is <= the scholarship's 'max_income_pa'.
-        Extract 'min_percentage' (integer) and 'max_income_pa' (integer) from the unstructured text in the 'eligibility' field.
-        """
-
-    prompt = f"""
-    You are an intelligent filtering agent for a student database.
-    
-    Student Qualifications:
-    {json.dumps(qualifications, indent=2)}
-
-    List of {item_type}s (JSON Array):
-    {items_json_string}
-
-    Instructions:
-    1. Analyze the student's qualifications.
-    2. For each item in the list:
-       a. Read the unstructured text from the item's {eligibility_field} field.
-       b. Extract the necessary criteria values (min_cgpa, degree_required, min_percentage, max_income_pa) from this text.
-       c. {eligibility_logic}
-       d. Compare the extracted criteria with the student's qualifications.
-    3. Return a new JSON array containing ONLY the full objects of the {item_type}s for which the student meets the criteria.
-    4. If no items meet the criteria, you MUST return an empty array [].
-    5. Respond ONLY with the filtered JSON array. Do not add explanations.
-
-    Filtered JSON Array Output:
-    """
-
-    # --- UPDATED MODEL NAME ---
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    try:
-        response = requests.post(api_url, json=payload, timeout=60) 
-        response.raise_for_status()
-        result = response.json()
-        text_response = result['candidates'][0]['content']['parts'][0]['text']
-        cleaned_text = text_response.strip().replace('```json', '').replace('```', '')
-        
-        try:
-            filtered_list = json.loads(cleaned_text)
-            if not isinstance(filtered_list, list): 
-                 raise json.JSONDecodeError("LLM did not return a list.", cleaned_text, 0)
-            print(f"LLM returned {len(filtered_list)} eligible {item_type}s.")
-            return filtered_list
-        except json.JSONDecodeError as json_e:
-             print(f"ERROR: LLM returned invalid JSON for filtering. Response: {cleaned_text}. Error: {json_e}")
-             return {"error": f"LLM returned invalid JSON during filtering."}
-
-    except Exception as e:
-        print(f"ERROR: LLM batch filtering failed. {e}")
-        return {"error": f"LLM filtering process failed: {e}"}
-
-# --- UPDATED: execute_query_plan ---
 def execute_query_plan(plan, student_id=None, original_query=""):
     """
-    Executes all intents in the query plan, then sends the final
-    results to the LLM for summarization.
+    Executes all intents in the query plan.
+    Uses the "Smart Filter" (local Python) for jobs/scholarships.
+    Uses direct DB queries for documents.
     """
     print(f"--- Executing Full Query Plan (Context: student_id={student_id}) ---")
     
     if "error" in plan:
-        return summarize_results_with_llm(plan, original_query) # Let LLM explain the error
+        return summarize_results_with_llm(plan, original_query)
     if not plan.get("intents"): 
         return summarize_results_with_llm(
             {"message": "I'm sorry, I couldn't understand that request. Please ask about jobs, scholarships, or your documents."},
@@ -358,97 +301,138 @@ def execute_query_plan(plan, student_id=None, original_query=""):
         )
     
     final_results = {}
-    if not student_id and plan.get("user_name"):
-        try:
-            student = Student.objects.get(full_name__iexact=plan.get("user_name"))
-            student_id = student.student_id
-        except Student.DoesNotExist: pass
     
+    # Get student qualifications *once* from our fast, local DB
     qualifications = get_student_qualifications(student_id) if student_id else {}
 
-    # --- (This whole loop for intents is the same as before) ---
     for intent_data in plan["intents"]:
         intent = intent_data.get("target")
         params = intent_data.get("params", {})
-        
+
+        # --- INTENT: GET_JOBS ---
         if intent == "GET_JOBS":
-            # ... (code for GET_JOBS as before, using batch filtering) ...
-            endpoint = f'http://{PARTNER_IP}:5000/api/jobs'
             try:
+                # 1. Fetch ALL jobs from partner
+                endpoint = f'http://{PARTNER_IP}:5000/api/jobs'
                 print(f"Making REAL API call for all jobs to: {endpoint}")
                 response = requests.get(endpoint, timeout=10)
                 response.raise_for_status()
                 all_jobs = response.json()
-                if params.get("aggregate") == "count":
+                
+                if params.get("aggregate") == "count" and not params.get("filter_by_eligibility"):
                     final_results['jobs_count'] = {"count": len(all_jobs)}
+                
+                # 2. "Smart Filter" (local Python)
                 elif params.get("filter_by_eligibility") and student_id:
-                    if not qualifications.get('degrees'):
-                         final_results['jobs'] = {"message": "Cannot check job eligibility: No verified degree found."}
-                         continue
-                    eligible_jobs = filter_items_with_llm(all_jobs, qualifications, 'jobs')
-                    final_results['jobs'] = eligible_jobs
+                    print(f"Filtering {len(all_jobs)} jobs based on profile: {qualifications}")
+                    eligible_jobs = []
+                    student_skills = [s.lower() for s in qualifications.get("skills", [])]
+                    
+                    for job in all_jobs:
+                        try:
+                            criteria = json.loads(job.get("eligibility_criteria", "{}"))
+                            job_skills = criteria.get("skills", "").lower()
+                            
+                            if any(skill in job_skills for skill in student_skills if skill):
+                                eligible_jobs.append(job)
+                                
+                        except Exception as e:
+                            print(f"Skipping job, bad criteria: {e}")
+                            continue 
+                    
+                    if params.get("aggregate") == "count":
+                        final_results['jobs_count'] = {"count": len(eligible_jobs)}
+                    else:
+                        final_results['jobs'] = eligible_jobs
+                
                 else:
-                    final_results['jobs'] = all_jobs
+                    final_results['jobs'] = all_jobs # Return all jobs if no filter
+                    
             except requests.exceptions.RequestException as e:
                 final_results['jobs'] = {"error": f"Failed to fetch jobs: {e}"}
 
+        # --- INTENT: GET_SCHOLARSHIPS ---
         elif intent == "GET_SCHOLARSHIPS":
-            # ... (code for GET_SCHOLARSHIPS as before, using batch filtering) ...
-            endpoint = f'http://{PARTNER_IP}:5000/api/scholarships'
             try:
+                # 1. Fetch ALL scholarships
+                endpoint = f'http://{PARTNER_IP}:5000/api/scholarships'
                 print(f"Making REAL API call for all scholarships to: {endpoint}")
                 response = requests.get(endpoint, timeout=10)
                 response.raise_for_status()
                 all_scholarships = response.json()
-                if params.get("filter_by_eligibility") and student_id:
-                    if qualifications.get('income') is None:
-                        final_results['scholarships'] = {"message": "Cannot check scholarship eligibility: No verified income found."}
-                        continue
-                    eligible_scholarships = filter_items_with_llm(all_scholarships, qualifications, 'scholarships')
-                    final_results['scholarships'] = eligible_scholarships
+
+                if params.get("aggregate") == "count" and not params.get("filter_by_eligibility"):
+                    final_results['scholarships_count'] = {"count": len(all_scholarships)}
+
+                # 2. "Smart Filter" (local Python)
+                elif params.get("filter_by_eligibility") and student_id:
+                    print(f"Filtering {len(all_scholarships)} scholarships based on profile: {qualifications}")
+                    eligible_scholarships = []
+                    student_income = qualifications.get("income")
+                    student_perc = qualifications.get("highest_percentage")
+
+                    for schol in all_scholarships:
+                        try:
+                            criteria = json.loads(schol.get("eligibility_criteria", "{}"))
+                            max_income = criteria.get("income")
+                            min_perc = criteria.get("annual_percentage")
+
+                            income_eligible = True
+                            perc_eligible = True
+                            
+                            if student_income and max_income:
+                                income_eligible = student_income <= int(max_income)
+                            
+                            if student_perc and min_perc:
+                                perc_eligible = student_perc >= float(min_perc)
+                                
+                            if income_eligible and perc_eligible:
+                                eligible_scholarships.append(schol)
+
+                        except Exception as e:
+                            print(f"Skipping scholarship, bad criteria: {e}")
+                            continue
+
+                    if params.get("aggregate") == "count":
+                        final_results['scholarships_count'] = {"count": len(eligible_scholarships)}
+                    else:
+                        final_results['scholarships'] = eligible_scholarships
+                
                 else:
-                    final_results['scholarships'] = all_scholarships
+                     final_results['scholarships'] = all_scholarships
+            
             except requests.exceptions.RequestException as e:
                 final_results['scholarships'] = {"error": f"Failed to fetch scholarships: {e}"}
 
+        # --- INTENT: GET_DOCUMENTS ---
         elif intent == "GET_DOCUMENTS":
+            print("--- Querying Document Files ---")
             try:
-                # Start with all documents in the database
                 docs_query = Document.objects.all()
 
-                # A. Check if the admin is asking an aggregate query about ALL students
+                # A. Admin "All Students" context
                 if not student_id: 
-                    # This is the "All Students" case
-                    
-                    # Filter by status if the query asked for it (e.g., "how many verified...")
-                    status_filter = params.get('verification_status')
-                    if status_filter:
-                        docs_query = docs_query.filter(verification_status=status_filter)
-                    
-                    # Check for document type (e.g., "how many... aadhar")
-                    # This is a simple text match for now
-                    if "aadhar" in original_query.lower():
-                        docs_query = docs_query.filter(document_type__icontains="Aadhar")
-                    
-                    # Finally, perform the aggregation
-                    if params.get("aggregate") == "count":
-                        count = docs_query.count()
-                        final_results['document_aggregate'] = {"count": count, "query": original_query}
-                    else:
-                        # We don't want to return all 1000 documents, so we ask them to be specific.
-                        final_results['documents'] = {"message": "You're querying all students. Please ask an aggregate question like 'how many...' or select a specific student."}
-
-                # B. This is the normal case: a specific student IS selected
+                    pass # Start with all documents
+                # B. Specific Student context
                 else: 
-                    # Filter for the specific student
                     docs_query = docs_query.filter(student_id=student_id)
-                    
-                    # Filter by status if the query asked for it
-                    status_filter = params.get('verification_status')
-                    if status_filter:
-                        docs_query = docs_query.filter(verification_status=status_filter)
-                    
-                    # Serialize the data manually for the LLM
+                
+                # Check for file type filter (e.g., "resume", "aadhar")
+                value_filter = params.get("value")
+                if value_filter:
+                    docs_query = docs_query.filter(document_type__icontains=value_filter)
+
+                # Check for status filter
+                status_filter = params.get('verification_status')
+                if status_filter:
+                    docs_query = docs_query.filter(verification_status=status_filter)
+                
+                # Check for aggregation
+                if params.get("aggregate") == "count":
+                    count = docs_query.count()
+                    final_results['document_aggregate'] = {"count": count, "query_details": f"documents matching {params}"}
+                else:
+                    # Return the list of documents
                     final_results['documents'] = [
                         {"type": d.document_type, "status": d.verification_status, "id": d.document_id} 
                         for d in docs_query
@@ -457,10 +441,56 @@ def execute_query_plan(plan, student_id=None, original_query=""):
             except Exception as e:
                 final_results['documents'] = {"error": f"Failed to fetch documents locally: {e}"}
 
+        elif intent == "ANALYZE_PROFILES":
+            print("--- Analyzing Student Profiles ---")
+            try:
+                profile_query = StudentProfile.objects.all()
+                
+                # Check for filters (e.g., "how many students know Python")
+                field_to_filter = params.get("field")
+                value_to_filter = params.get("value")
+                
+                if field_to_filter == "skills" and value_to_filter:
+                    profile_query = profile_query.filter(verified_skills__icontains=value_to_filter)
+                
+                aggregation_type = params.get("aggregate")
+                field_to_aggregate = params.get("field")
+
+                if aggregation_type == "count":
+                    count = profile_query.count()
+                    final_results['profile_analysis'] = {"count": count, "query_details": f"students matching {params}"}
+                
+                elif aggregation_type == "average":
+                    if field_to_aggregate == "highest_percentage":
+                        result = profile_query.aggregate(average=Avg('highest_percentage'))
+                        final_results['profile_analysis'] = {"average_percentage": result['average']}
+                    elif field_to_aggregate == "income":
+                        result = profile_query.aggregate(average=Avg('annual_income'))
+                        final_results['profile_analysis'] = {"average_income": result['average']}
+                    else:
+                        final_results['profile_analysis'] = {"error": "Average calculation is only supported for 'income' or 'highest_percentage'."}
+                
+                # --- NEW: Gracefully handle 'mode' ---
+                elif aggregation_type == "mode":
+                    # (A real 'mode' query is very complex. We'll handle it gracefully.)
+                    avg_result = profile_query.aggregate(average=Avg('highest_percentage'))
+                    final_results['profile_analysis'] = {
+                        "message": "Mode calculation is not supported, but I can give you the average!",
+                        "average_percentage": avg_result['average']
+                    }
+                
+                else:
+                    final_results['profile_analysis'] = {"message": "I understood you want to analyze profiles, but I'm not sure how."}
+                    
+            except Exception as e:
+                print(f"ERROR: Profile analysis failed: {e}")
+                final_results['profile_analysis'] = {"error": f"Error analyzing profiles: {e}"}
+        # --- INTENT: ANALYZE_SKILLS ---
+
         elif intent == "ANALYZE_SKILLS":
-            # ... (code for ANALYZE_SKILLS as before, using gemini-2.5-flash-lite) ...
             job_title_param = params.get('job_title', 'a generic job')
             mock_job_description = f"We are looking for a {job_title_param} to help us with our government projects."
+            
             skills_endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
             prompt = f"Based on the following job description, list the top 5 most important technical skills. Return only a JSON array of strings. Description: '{mock_job_description}'"
             payload = {
@@ -474,8 +504,17 @@ def execute_query_plan(plan, student_id=None, original_query=""):
                 response.raise_for_status()
                 result = response.json()
                 text_response = result['candidates'][0]['content']['parts'][0]['text']
-                cleaned_text = text_response.strip().replace('```json', '').replace('```', '')
-                skills = json.loads(cleaned_text)
+                
+                text_response = text_response.replace("None", "null") # Fix Python None vs JSON null
+                
+                try:
+                    skills = json.loads(text_response)
+                except json.JSONDecodeError:
+                    start = text_response.find('[')
+                    end = text_response.rfind(']') + 1
+                    cleaned_json_text = text_response[start:end]
+                    skills = json.loads(cleaned_json_text)
+
                 final_results['skill_analysis'] = {"job_title": job_title_param, "required_skills": skills}
             except Exception as e:
                  final_results['skill_analysis'] = {"error": f"Error fetching skills: {e}"}
@@ -483,105 +522,5 @@ def execute_query_plan(plan, student_id=None, original_query=""):
     if not final_results:
         final_results = {"message": "I understood the request, but couldn't find any relevant data."}
     
-    # --- THIS IS THE NEW FINAL STEP ---
-    # Instead of returning raw JSON, summarize it.
+    # --- Final Step: Summarize all results ---
     return summarize_results_with_llm(final_results, original_query)
-  
-    # --- UPDATED to use the new, smarter function ---
-    qualifications = get_student_qualifications(student_id) if student_id else {}
-
-    for intent_data in plan["intents"]:
-        intent = intent_data.get("target")
-        params = intent_data.get("params", {})
-        
-        if intent == "GET_JOBS":
-            endpoint = f'http://{PARTNER_IP}:5000/api/jobs'
-            try:
-                print(f"Making REAL API call for all jobs to: {endpoint}")
-                response = requests.get(endpoint, timeout=10)
-                response.raise_for_status()
-                all_jobs = response.json()
-
-                if params.get("aggregate") == "count":
-                    final_results['jobs_count'] = {"count": len(all_jobs)}
-                elif params.get("filter_by_eligibility") and student_id:
-                    if not qualifications.get('degrees'):
-                         final_results['jobs'] = {"message": "Cannot check job eligibility: No verified degree found."}
-                         continue
-                    eligible_jobs = filter_items_with_llm(all_jobs, qualifications, 'jobs')
-                    final_results['jobs'] = eligible_jobs
-                else:
-                    final_results['jobs'] = all_jobs
-            except requests.exceptions.RequestException as e:
-                final_results['jobs'] = {"error": f"Failed to fetch jobs: {e}"}
-
-        elif intent == "GET_SCHOLARSHIPS":
-            endpoint = f'http://{PARTNER_IP}:5000/api/scholarships'
-            try:
-                print(f"Making REAL API call for all scholarships to: {endpoint}")
-                response = requests.get(endpoint, timeout=10)
-                response.raise_for_status()
-                all_scholarships = response.json()
-
-                if params.get("filter_by_eligibility") and student_id:
-                    if qualifications.get('income') is None:
-                        final_results['scholarships'] = {"message": "Cannot check scholarship eligibility: No verified income found."}
-                        continue
-                    eligible_scholarships = filter_items_with_llm(all_scholarships, qualifications, 'scholarships')
-                    final_results['scholarships'] = eligible_scholarships
-                else:
-                    final_results['scholarships'] = all_scholarships
-            except requests.exceptions.RequestException as e:
-                final_results['scholarships'] = {"error": f"Failed to fetch scholarships: {e}"}
-        
-        elif intent == "GET_DOCUMENTS":
-            endpoint = 'http://127.0.0.1:8000/api/documents/'
-            try:
-                response = requests.get(endpoint, timeout=5)
-                response.raise_for_status()
-                all_documents = response.json()
-                
-                filtered_documents = all_documents
-                if student_id:
-                    try:
-                        student_id_int = int(student_id)
-                        filtered_documents = [doc for doc in filtered_documents if doc.get('student') == student_id_int]
-                    except (ValueError, TypeError):
-                        pass
-
-                status_filter = params.get('verification_status')
-                if status_filter:
-                    if isinstance(status_filter, list):
-                        filtered_documents = [doc for doc in filtered_documents if doc.get('verification_status') in status_filter]
-                    else:
-                        filtered_documents = [doc for doc in filtered_documents if doc.get('verification_status') == status_filter]
-                
-                final_results['documents'] = filtered_documents
-
-            except requests.exceptions.RequestException as e:
-                final_results['documents'] = {"error": f"Failed to fetch documents: {e}"}
-
-        elif intent == "ANALYZE_SKILLS":
-            job_title_param = params.get('job_title', 'a generic job')
-            mock_job_description = f"We are looking for a {job_title_param} to help us with our government projects."
-            
-            # --- UPDATED MODEL NAME ---
-            skills_endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
-            prompt = f"Based on the following job description, list the top 5 most important technical skills. Return only a JSON array of strings. Description: '{mock_job_description}'"
-            payload = {"contents": [{"parts": [{"text": prompt}]}]}
-            try:
-                response = requests.post(skills_endpoint, json=payload, timeout=15)
-                response.raise_for_status()
-                result = response.json()
-                text_response = result['candidates'][0]['content']['parts'][0]['text']
-                cleaned_text = text_response.strip().replace('```json', '').replace('```', '')
-                skills = json.loads(cleaned_text)
-                final_results['skill_analysis'] = {"job_title": job_title_param, "required_skills": skills}
-            except Exception as e:
-                 final_results['skill_analysis'] = {"error": f"Error fetching skills: {e}"}
-
-    if not final_results:
-        return {"message": "I couldn't determine a specific task from your query."}
-        
-    return final_results
-
