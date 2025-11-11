@@ -179,9 +179,7 @@ const LoginPage = () => {
     );
 };
 
-// --- (Register Page: RegisterPage remains exactly the same) ---
 const RegisterPage = () => {
-    // --- (This component's content is unchanged) ---
     const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -195,7 +193,7 @@ const RegisterPage = () => {
         setIsLoading(true);
         try {
             await register(fullName, email, password);
-            window.location.href = '/'; // Redirect to home
+            window.location.href = '/'; 
         } catch (err) {
             setError(err.message);
         } finally {
@@ -587,9 +585,9 @@ const App = () => (
                     {/* Redirect /portal to /portal/dashboard */}
                     <Route index element={<Navigate to="/portal/dashboard" replace />} /> 
                     <Route path="dashboard" element={<AdminHome />} /> 
-                    {/* --- END OF FIX --- */}
-                    
                     <Route path="chat" element={<AdminChat />} />
+                    <Route path="jobs" element={<JobList />} />
+                    <Route path="scholarships" element={<ScholarshipList />} />
 
                 </Route>
 

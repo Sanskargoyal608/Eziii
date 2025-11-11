@@ -9,15 +9,16 @@ export const JobList = () => {
   useEffect(() => {
     const fetchJobs = async () => {
       try {
-        // Fetch data from your Flask API
+        // Fetch data using apiFetch
         const response = await fetch('http://192.168.52.109:5000/api/jobs');
         if (!response.ok) {
           throw new Error('Network response was not ok');
         }
         const data = await response.json();
+        console.log("Jobs data received:", data); // Log the data
         setJobs(data);
       } catch (error) {
-        setError('Failed to fetch jobs. Make sure the Flask API server is running.');
+        setError('Failed to fetch jobs. Make sure the API server is running.');
         console.error("Error fetching jobs:", error);
       } finally {
         setLoading(false);
@@ -35,12 +36,23 @@ export const JobList = () => {
       {!loading && !error && jobs.map((job) => (
         <div key={job.job_id} className={styles.card}>
           <h3 className={styles.cardTitle}>{job.job_title}</h3>
-          <p className={styles.cardCompany}>Company: {job.company_name ? job.company_name : 'N/A'}</p>
           <p className={styles.cardLocation}>Location: {job.location ? job.location : 'N/A'}</p>
-          <p className={styles.cardPostedDate}>Posted: {job.posted_date ? job.posted_date : 'N/A'}</p>
-          <p className={styles.cardDescription}>
-            {job.job_description ? job.job_description : 'No description available'}
-          </p>
+          <p className={styles.cardPostedDate}>Posted: {job.posted_date ? new Date(job.posted_date).toLocaleString() : 'N/A'}</p>
+          {job.eligibility_criteria && (() => {
+            try {
+              const eligibility = JSON.parse(job.eligibility_criteria);
+              return (
+                <>
+                  <p className={styles.cardExperience}>Experience: {eligibility.experience ? eligibility.experience : 'N/A'}</p>
+                  <p className={styles.cardSkills}>Skills: {eligibility.skills ? eligibility.skills : 'N/A'}</p>
+                  <p className={styles.cardSalary}>Salary: {eligibility.salary ? eligibility.salary : 'N/A'}</p>
+                </>
+              );
+            } catch (e) {
+              console.error("Error parsing eligibility_criteria:", e);
+              return null;
+            }
+          })()}
           <div className={styles.cardFooter}>
             {job.source_url && (
               <a href={job.source_url} target="_blank" rel="noopener noreferrer" className={styles.applyButton}>

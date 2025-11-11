@@ -30,6 +30,7 @@ class StudentRegistrationSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
         fields = ['student_id', 'full_name']
 
+
 class DocumentUploadSerializer(serializers.ModelSerializer):
         class Meta:
             model = Document
@@ -52,3 +53,8 @@ class DocumentUploadSerializer(serializers.ModelSerializer):
             # triggered by a different process (or we can add it here).
             # We'll add the extraction logic in the View for simplicity for now.
             return document
+
+class GovtJobSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GovtJob
+        fields = '__all__'

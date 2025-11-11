@@ -41,6 +41,14 @@
     font-size: 0.9rem;
 }
 
+.cardExperience,
+.cardSkills,
+.cardSalary {
+    margin: 0 0 0.5rem 0;
+    color: #555;
+    font-size: 0.9rem;
+}
+
 .cardSubtitle {
     margin: 0 0 1rem 0;
     color: #7f8c8d;
