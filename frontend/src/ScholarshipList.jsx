@@ -39,7 +39,7 @@ export const ScholarshipList = () => {
           <p className={styles.cardDescription}>{scholarship.description}</p>
           <div className={styles.cardFooter}>
             <p className={styles.cardDescription}>Eligibility: {scholarship.eligibility_criteria}</p>
-            <a href="#" target="_blank" rel="noopener noreferrer" className={styles.applyButton}>Learn More</a>
+            {/* <a href="#" target="_blank" rel="noopener noreferrer" className={styles.applyButton}>Learn More</a> */}
           </div>
         </div>
       ))}

@@ -7,6 +7,47 @@ DB_FILE = "federated_data.db"
 CSV_FILE = "data/naukri_com-jobs__2020.csv"
 SCHOLARSHIP_CSV_FILE = "data/scholarship.csv"
 
+def create_database():
+    """Creates the SQLite database and the required tables."""
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            print(f"Successfully connected to '{DB_FILE}'")
+
+            # --- Recreate Govt_Jobs table for schema update ---
+            cursor.execute("DROP TABLE IF EXISTS Govt_Jobs;")
+            print("Creating 'Govt_Jobs' table...")
+            cursor.execute("""
+            CREATE TABLE Govt_Jobs (
+                job_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_title TEXT NOT NULL,
+                job_description TEXT,
+                eligibility_criteria TEXT,
+                required_skills_raw TEXT,
+                source_url TEXT,
+                posted_date TEXT
+            );
+            """)
+            print("Table 'Govt_Jobs' created.")
+
+            # --- Recreate Scholarships table for schema update ---
+            cursor.execute("DROP TABLE IF EXISTS Scholarships;")
+            print("Creating 'Scholarships' table...")
+            cursor.execute("""
+            CREATE TABLE Scholarships (
+                scholarship_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scholarship_name TEXT NOT NULL,
+                description TEXT,
+                eligibility_criteria TEXT
+            );
+            """)
+            print("Table 'Scholarships' created.")
+
+        print("Database setup complete and connection closed.")
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+
+
 def populate_sqlite_data():
     """Populates the SQLite database with job data from a local CSV file."""
     try:
@@ -25,10 +66,10 @@ def populate_sqlite_data():
                 print("Please download the CSV file from Kaggle and place it in that directory.")
                 return
 
-            cursor.execute("DELETE FROM govt_jobs")
-            print("Cleared existing data from 'govt_jobs'.")
+            cursor.execute("DELETE FROM Govt_Jobs")
+            print("Cleared existing data from 'Govt_Jobs'.")
 
-            # --- Populate govt_jobs table ---
+            # --- Populate Govt_Jobs table ---
             jobs_to_insert = []
             skipped_rows = 0
             for index, row in df.iterrows():
@@ -50,10 +91,10 @@ def populate_sqlite_data():
                     jobs_to_insert.append((
                         job_title,
                         job_description,
-                        row.get('Location'),
-                        row.get('Crawl Timestamp'),  # Use Crawl Timestamp for posted_date
+                        json.dumps(eligibility_criteria),
+                        row.get('Key Skills'), # required_skills_raw
                         "https://www.naukri.com/",
-                        json.dumps(eligibility_criteria)
+                        row.get('Crawl Timestamp')  # Use Crawl Timestamp for posted_date
                     ))
                 else:
                     skipped_rows += 1
@@ -62,16 +103,16 @@ def populate_sqlite_data():
                 print(f"Skipped {skipped_rows} rows due to missing job title.")
 
             cursor.executemany("""
-            INSERT INTO govt_jobs (job_title, job_description, location, posted_date, source_url, eligibility_criteria)
+            INSERT INTO Govt_Jobs (job_title, job_description, eligibility_criteria, required_skills_raw, source_url, posted_date)
             VALUES (?, ?, ?, ?, ?, ?)
             """, jobs_to_insert)
-            print(f"Inserted {len(jobs_to_insert)} records into 'govt_jobs'.")
+            print(f"Inserted {len(jobs_to_insert)} records into 'Govt_Jobs'.")
 
             conn.commit()
             print("Data committed and connection closed.")
 
     except (sqlite3.Error, Exception) as e:
-        print(f"An error occurred: {e}")
+        print(f"An error occurred during job data population: {e}")
 
 def merge_scholarship_data():
     """
@@ -128,7 +169,10 @@ def populate_scholarship_data():
                 print(f"ERROR: The file '{SCHOLARSHIP_CSV_FILE}' was not found in the 'e:\\Eziii\\eziii_backend' directory.")
                 return
 
-            # --- Populate scholarships table ---
+            cursor.execute("DELETE FROM Scholarships")
+            print("Cleared existing data from 'Scholarships'.")
+
+            # --- Populate Scholarships table ---
             scholarships_to_insert = []
             for index, row in df.iterrows():
                 scholarship_name = row.get('Name')
@@ -161,10 +205,11 @@ def populate_scholarship_data():
             print("Data committed and connection closed.")
 
     except (sqlite3.Error, Exception) as e:
-        print(f"An error occurred: {e}")
+        print(f"An error occurred during scholarship data population: {e}")
 
 
 if __name__ == "__main__":
+    create_database()
     merge_scholarship_data()
     populate_sqlite_data()
     populate_scholarship_data()
