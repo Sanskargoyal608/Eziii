@@ -2,111 +2,72 @@ import os
 import django
 import random
 from faker import Faker
-from django.contrib.auth.hashers import make_password
 
-# Set up Django environment
+# --- CONFIGURATION ---
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'eduverify_backend.settings')
 django.setup()
 
-from core.models import Student, Document
+from core.models import Student, Document, StudentProfile
+from django.utils import timezone
 
+# --- SCRIPT ---
 fake = Faker()
+NUM_STUDENTS = 100
 
-def clear_data():
-    """Deletes all existing data from the models."""
-    print("Deleting old data...")
-    Document.objects.all().delete()
-    Student.objects.all().delete()
-    print("Old data deleted.")
-
-def generate_students(num_students=150):
-    """Generates fake student data."""
-    print(f"Generating {num_students} students...")
-    students = []
-    for _ in range(num_students):
-        profile = fake.profile()
-        hashed_password = make_password('password123')
-        
-        profile_details = {
-            'address': profile['address'],
-            'birthdate': str(profile['birthdate']),
-            'income_pa': random.choice([150000, 200000, 250000, 300000, 400000, 500000, 800000, 1000000]),
-            'phone_number': fake.phone_number()
-        }
-        
+def create_rich_student_data():
+    print(f"Deleting old data...")
+    Student.objects.all().delete() # This deletes ALL students and their related data
+    
+    print(f"Creating {NUM_STUDENTS} new rich students...")
+    
+    for i in range(NUM_STUDENTS):
+        # 1. Create the Student
+        full_name = fake.name()
+        email = f'student{i+1}@eduverify.com'
         student = Student.objects.create(
-            full_name=profile['name'],
-            email=profile['mail'],
-            password=hashed_password,
-            profile_details=profile_details
+            full_name=full_name,
+            email=email,
+            password='123' # All students have the same password
         )
-        students.append(student)
-    return students
 
-def generate_documents(students_list):
-    """
-    Generates a more realistic set of documents for each student, ensuring
-    key qualifications are present and verified for eligibility checks.
-    """
-    print("Generating documents...")
-    doc_types = ['10th Marksheet', '12th Marksheet', 'Aadhar Card']
-    degree_types = ['B.Tech Certificate', 'Diploma Certificate']
-
-    for student in students_list:
-        # --- NEW LOGIC: Ensure every student has key verified documents ---
+        # 2. Get the auto-created profile
+        profile = student.studentprofile 
         
-        # 1. Add a verified degree certificate for eligibility
-        degree_to_add = random.choice(degree_types)
-        Document.objects.create(
-            student=student,
-            document_type=degree_to_add,
-            verification_status='Verified',
-            issue_date=fake.date_between(start_date='-4y', end_date='-1y'),
-            verified_data={'percentage': round(random.uniform(70.0, 95.0), 2)}
-        )
+        # 3. Create Rich, "Verified" Data
+        # 30% of students will have a high income
+        is_high_income = random.choice([True] * 3 + [False] * 7)
+        profile.annual_income = random.randint(600000, 1200000) if is_high_income else random.randint(50000, 400000)
+        
+        # Give them a random percentage and degree
+        profile.highest_percentage = round(random.uniform(60.0, 95.0), 2)
+        profile.degrees = random.choice([["B.Tech"], ["12th"], ["B.Tech", "12th"]])
+        
+        # Give them a random set of skills
+        skill_pool = [
+            'Python', 'React', 'Java', 'Data Analysis', 'C++', 'SQL', 'Machine Learning', 
+            'Unity', 'AWS', 'JavaScript', 'HTML', 'CSS', 'Django', 'FastAPI', 'Node.js',
+            'MongoDB', 'PostgreSQL', 'Git', 'Docker', 'Kubernetes', 'Terraform',
+            'Data Analyst', 'Business Analyst', 'Power BI', 'Tableau', 'Excel',
+            'Project Management', 'Agile', 'Scrum', 'Leadership', 'Communication',
+            'C#', 'Azure', 'Google Cloud (GCP)', 'Network Security', 'Penetration Testing'
+        ]
+        profile.verified_skills = list(set(random.sample(skill_pool, random.randint(3, 6))))
 
-        # 2. Add a verified income certificate for eligibility
-        Document.objects.create(
-            student=student,
-            document_type='Income Certificate',
-            verification_status='Verified',
-            issue_date=fake.date_between(start_date='-1y', end_date='today'),
-            verified_data={'income': student.profile_details.get('income_pa')}
-        )
-
-        # 3. Add a few other random documents for variety
-        for _ in range(random.randint(2, 4)):
+        profile.save()
+        
+        # 4. Create "Pending" Documents
+        doc_types = ['Aadhar Card', 'PAN Card', 'Resume']
+        for doc_type in doc_types:
             Document.objects.create(
                 student=student,
-                document_type=random.choice(doc_types),
-                verification_status=random.choice(['Verified', 'Pending', 'Rejected']),
-                issue_date=fake.date_between(start_date='-5y', end_date='today'),
-                verified_data=None 
+                document_type=doc_type,
+                verification_status='Pending', # We can verify them later in the admin
+                issue_date=fake.date_between(start_date='-5y', end_date='today')
             )
             
-def generate_jobs(num_jobs=75):
-    """Generates fake government job postings."""
-    print(f"Generating {num_jobs} jobs...")
-    degrees = ['B.Tech', 'Diploma', 'B.Sc', 'M.Tech']
-    for _ in range(num_jobs):
-        GovtJob.objects.create(
-            job_title=fake.job() + " (Government Sector)",
-            job_description=fake.paragraph(nb_sentences=5),
-            eligibility_criteria={
-                'degree_required': random.choice(degrees),
-                'min_cgpa': round(random.uniform(6.0, 8.0), 1)
-            },
-            source_url=fake.url()
-        )
+        print(f"Created student {i+1}: {full_name}")
 
-def main():
-    """Main function to run the seeding process."""
-    clear_data()
-    students_list = generate_students()
-    generate_documents(students_list)
-    generate_jobs()
-    print("✅ Database seeding successful!")
+    print(f"--- Successfully created {NUM_STUDENTS} students. ---")
 
-if __name__ == '__main__':
-    main()
-
+if __name__ == "__main__":
+    create_rich_student_data()

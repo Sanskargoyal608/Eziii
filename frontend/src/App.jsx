@@ -358,9 +358,10 @@ const DocumentUpload = ({ onUploadSuccess }) => {
                 <select id="docType" value={documentType} onChange={(e) => setDocumentType(e.target.value)} className={styles.selectInput}>
                     <option value="Aadhar Card">Aadhar Card</option>
                     <option value="PAN Card">PAN Card</option>
-                    <option value="B.Tech Certificate">B.Tech Certificate</option>
-                    <option value="12th Marksheet">12th Marksheet</option>
+                    <option value="Resume">Resume</option>
                     <option value="10th Marksheet">10th Marksheet</option>
+                    <option value="12th Marksheet">12th Marksheet</option>
+                    <option value="B.Tech Marksheet">B.Tech Marksheet</option>
                     <option value="Income Certificate">Income Certificate</option>
                     <option value="Other">Other</option>
                 </select>

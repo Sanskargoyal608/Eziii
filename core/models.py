@@ -1,6 +1,9 @@
 from django.db import models
 from django.contrib.auth.hashers import make_password, check_password
 
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
 # This file contains the "blueprint" for your database.
 # Each class represents a table, and each attribute represents a column.
 
@@ -117,6 +120,25 @@ class Scholarship(models.Model):
 
     def __str__(self):
         return self.scholarship_name
+    
+class StudentProfile(models.Model):
+    student = models.OneToOneField(Student, on_delete=models.CASCADE, primary_key=True, related_name='studentprofile')
+    highest_percentage = models.FloatField(null=True, blank=True)
+    degrees = models.JSONField(default=list, blank=True)
+    annual_income = models.IntegerField(null=True, blank=True)
+    verified_skills = models.JSONField(default=list, blank=True)
+
+    def __str__(self):
+        return f"Profile for {self.student.full_name}"
+
+@receiver(post_save, sender=Student)
+def create_student_profile(sender, instance, created, **kwargs):
+    if created:
+        StudentProfile.objects.create(student=instance)
+
+@receiver(post_save, sender=Student)
+def save_student_profile(sender, instance, **kwargs):
+    instance.studentprofile.save()
     
 
 
