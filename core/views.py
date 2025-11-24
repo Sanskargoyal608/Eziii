@@ -16,7 +16,7 @@ from reportlab.lib.utils import ImageReader as ReportLabImageReader # <-- ADD TH
 from reportlab.lib.colors import green, red, black # <-- ADD THIS
 
 # Import the correct function from your query_analyzer
-from query_analyzer import analyze_and_decompose_query_with_llm, execute_query_plan
+from query_analyzer import analyze_query_for_tools, execute_tool_plan, get_synthesized_answer
 
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.db.models import Q # Import for complex lookups
@@ -152,19 +152,19 @@ class FederatedQueryView(APIView):
     def post(self, request, format=None):
         query = request.data.get('query')
         student_id = request.user.student_id 
-
         if not query:
             return Response({"error": "No query provided."}, status=status.HTTP_400_BAD_REQUEST)
 
-        plan = analyze_and_decompose_query_with_llm(query)
-        
-        # --- THIS IS THE CHANGE ---
-        # We now pass the original query text along with the plan
-        results = execute_query_plan(plan, student_id=student_id, original_query=query)
-        
-        return Response(results)
+        # 1. Get the tool plan
+        plan = analyze_query_for_tools(query, student_id=student_id) 
 
+        # 2. Run the tools to get data
+        context_data = execute_tool_plan(plan, student_id=student_id) 
 
+        # 3. Give the data to the "Synthesizer" AI to answer
+        final_response = get_synthesized_answer(context_data, query)
+
+        return Response(final_response)
     
 
 class GeneratePDFView(APIView):
@@ -351,25 +351,21 @@ class AdminChatView(APIView):
 
     def post(self, request, format=None):
         query = request.data.get('query')
-        
-        # Admin can select a specific student or 'all'
-        student_id_str = request.data.get('student_id') # e.g., "1", "5", or "all"
-
+        student_id_str = request.data.get('student_id') 
         student_context_id = None
         if student_id_str and student_id_str != 'all':
-            try:
-                student_context_id = int(student_id_str)
-            except ValueError:
-                return Response({"error": "Invalid student_id format."}, status=status.HTTP_400_BAD_REQUEST)
-
+            try: student_context_id = int(student_id_str)
+            except ValueError: return Response({"error": "Invalid student_id format."}, status=status.HTTP_400_BAD_REQUEST)
         if not query:
             return Response({"error": "No query provided."}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Analyze the query (this is the same as the user's chat)
-        plan = analyze_and_decompose_query_with_llm(query)
-        
-        # Execute the plan, but now pass the specific student_id (or None if 'all')
-        # The query_analyzer will handle aggregate queries like "how many students..."
-        results = execute_query_plan(plan, student_id=student_context_id, original_query=query)
-        
-        return Response(results)
+    
+        # 1. Get the tool plan
+        plan = analyze_query_for_tools(query, student_id=student_context_id)
+    
+        # 2. Run the tools to get data
+        context_data = execute_tool_plan(plan, student_id=student_context_id)
+    
+        # 3. Give the data to the "Synthesizer" AI to answer
+        final_response = get_synthesized_answer(context_data, query)
+    
+        return Response(final_response)

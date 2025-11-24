@@ -6,74 +6,35 @@ import json
 from dotenv import load_dotenv
 from core.models import Student, Document, StudentProfile
 from django.db.models import Avg, Count
+from django.db import connection
 
 # --- Load Environment Variables ---
 load_dotenv()
 
 # --- IMPORTANT ---
-PARTNER_IP = "192.168.52.109"  # Your partner's local IP
+# This IP is from your partner's JobList.jsx file.
+PARTNER_IP = "192.168.52.109" 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # ==============================================================================
-# 1. FINAL RESPONSE SUMMARIZATION
+# 1. DATABASE SCHEMA
 # ==============================================================================
 
-def summarize_results_with_llm(results, original_query):
+def get_db_schema():
     """
-    Takes the structured JSON results and the user's query,
-    and returns a human-readable text response.
+    Returns a simplified schema of the tables the LLM is allowed to query.
+    Uses the *correct* table names from models.py (db_table).
     """
-    print("--- Summarizing results with LLM ---")
-    if not GEMINI_API_KEY:
-        return {"error": "LLM not configured for summarization."}
+    return """
+    Table: students
+    Columns: student_id (INTEGER, PRIMARY KEY), full_name (TEXT)
 
-    # Convert the structured results to a string
-    results_string = json.dumps(results, indent=2)
+    Table: core_studentprofile
+    Columns: student_id (INTEGER, PRIMARY KEY, FOREIGN KEY to students.student_id), highest_percentage (FLOAT), degrees (JSON_ARRAY), annual_income (INTEGER), verified_skills (JSON_ARRAY)
 
-    prompt = f"""
-    You are a helpful student career advisor. Your job is to answer a user's question in a clear, friendly, and conversational way.
-    You will be given the user's original question and a JSON object containing the data you need to answer it.
-
-    User's Original Question:
-    "{original_query}"
-
-    Data to Use (JSON):
-    {results_string}
-
-    Instructions:
-    1. Analyze the user's question and the provided data.
-    2. Formulate a single, concise, human-readable response.
-    3. If the data contains an error message, explain the error politely.
-    4. If the data is an empty list (like `[]`), inform the user that no items were found.
-    5. Do not just repeat the JSON. Summarize it.
-
-    Example:
-    If the data is {{"jobs": [{{"job_title": "Data Analyst"}}]}},
-    your response should be: "Based on your qualifications, I found one job you are eligible for: 'Data Analyst'."
-
-    Example:
-    If the data is {{"documents": []}},
-    your response should be: "I checked your profile, but it looks like you haven't uploaded any documents that match that description yet."
-    
-    Now, please generate the response for the given data and query.
-
-    Your Answer:
+    Table: documents
+    Columns: document_id (INTEGER, PRIMARY KEY), student_id (INTEGER, FOREIGN KEY to students.student_id), document_type (TEXT), verification_status (TEXT)
     """
-
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-
-    try:
-        response = requests.post(api_url, json=payload, timeout=20)
-        response.raise_for_status()
-        result = response.json()
-        
-        text_response = result['candidates'][0]['content']['parts'][0]['text']
-        return {"response_text": text_response}
-    
-    except Exception as e:
-        print(f"ERROR: LLM Summarization failed. {e}")
-        return {"response_text": f"Sorry, I encountered an error while processing the results: {e}"}
 
 # ==============================================================================
 # 2. ETL & PROFILE MANAGEMENT (Extract, Transform, Load)
@@ -82,7 +43,7 @@ def summarize_results_with_llm(results, original_query):
 def update_profile_from_text(student, doc_type, text):
     """
     Parses raw text from a document AND updates the student's
-    structured StudentProfile in the database.
+    structured StudentProfile in the database. (Called by views.py on upload)
     """
     print(f"--- Updating Profile for {student.full_name} from {doc_type} ---")
     if not GEMINI_API_KEY: 
@@ -136,13 +97,13 @@ def update_profile_from_text(student, doc_type, text):
         profile, created = StudentProfile.objects.get_or_create(student=student)
         
         # 4. Save the structured data to the StudentProfile model
-        if "percentage" in parsed_data and parsed_data["percentage"]:
+        if "percentage" in parsed_data and parsed_data.get("percentage"):
             profile.highest_percentage = max(profile.highest_percentage or 0, float(parsed_data["percentage"]))
-        if "income" in parsed_data and parsed_data["income"]:
+        if "income" in parsed_data and parsed_data.get("income"):
             profile.annual_income = int(parsed_data["income"])
-        if "degrees" in parsed_data and parsed_data["degrees"]:
+        if "degrees" in parsed_data and parsed_data.get("degrees"):
             profile.degrees = list(set((profile.degrees or []) + parsed_data["degrees"])) # Merge lists
-        if "skills" in parsed_data and parsed_data["skills"]:
+        if "skills" in parsed_data and parsed_data.get("skills"):
             profile.verified_skills = list(set((profile.verified_skills or []) + parsed_data["skills"])) # Merge lists
             
         profile.save()
@@ -151,11 +112,16 @@ def update_profile_from_text(student, doc_type, text):
     except Exception as e:
         print(f"ERROR: LLM Profile update failed: {e}")
 
+# ==============================================================================
+# 3. TOOLKIT (The functions our "Executor" can run)
+# ==============================================================================
+
 def get_student_qualifications(student_id):
     """
+    Tool: [GET_STUDENT_PROFILE]
     Fetches the pre-structured qualifications from the database.
-    No LLM calls.
     """
+    print("Running tool: GET_STUDENT_PROFILE")
     if not student_id: return {}
     try:
         profile = StudentProfile.objects.get(student_id=student_id)
@@ -171,62 +137,132 @@ def get_student_qualifications(student_id):
         print(f"No profile found for student {student_id}")
         return {}
 
+def get_all_student_profiles_from_db():
+    """Tool: [GET_ALL_STUDENT_PROFILES] Fetches all student profiles."""
+    print("Running tool: GET_ALL_STUDENT_PROFILES")
+    try:
+        profiles = StudentProfile.objects.select_related('student').all()
+        return [
+            {
+                "student_id": p.student.student_id,
+                "full_name": p.student.full_name,
+                "highest_percentage": p.highest_percentage,
+                "degrees": p.degrees,
+                "annual_income": p.annual_income,
+                "verified_skills": p.verified_skills
+            }
+            for p in profiles
+        ]
+    except Exception as e:
+        return {"error": f"Failed to get all profiles: {e}"}
+
+def get_student_documents_from_db(student_id):
+    """Tool: [GET_STUDENT_DOCUMENTS] Fetches documents for a specific student."""
+    print("Running tool: GET_STUDENT_DOCUMENTS")
+    if not student_id: return {"error": "No student_id provided"}
+    try:
+        docs = Document.objects.filter(student_id=student_id)
+        return [
+            {"type": d.document_type, "status": d.verification_status}
+            for d in docs
+        ]
+    except Exception as e:
+        return {"error": f"Failed to get documents: {e}"}
+
+def get_all_documents_from_db():
+    """Tool: [GET_ALL_DOCUMENTS] Fetches all documents."""
+    print("Running tool: GET_ALL_DOCUMENTS")
+    try:
+        return [
+            {"student_id": d.student_id, "type": d.document_type, "status": d.verification_status}
+            for d in Document.objects.all()
+        ]
+    except Exception as e:
+        return {"error": f"Failed to get all documents: {e}"}
+
+def get_all_jobs_from_api():
+    """Tool: [GET_ALL_JOBS] Fetches all jobs from partner API."""
+    print("Running tool: GET_ALL_JOBS")
+    try:
+        endpoint = f'http://{PARTNER_IP}:5000/api/jobs'
+        response = requests.get(endpoint, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        return {"error": f"Failed to fetch jobs: {e}"}
+
+def get_all_scholarships_from_api():
+    """Tool: [GET_ALL_SCHOLARSHIPS] Fetches all scholarships from partner API."""
+    print("Running tool: GET_ALL_SCHOLARSHIPS")
+    try:
+        endpoint = f'http://{PARTNER_IP}:5000/api/scholarships'
+        response = requests.get(endpoint, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        return {"error": f"Failed to fetch scholarships: {e}"}
+
 # ==============================================================================
-# 3. QUERY DECOMPOSITION (LLM)
+# 4. AI "BRAIN" - STEP 1: DECOMPOSER (Decides which tools to use)
 # ==============================================================================
 
-def analyze_and_decompose_query_with_llm(query_text):
+def analyze_query_for_tools(query_text, student_id=None):
     """
-    Uses a schema-grounded LLM to analyze a natural language query and decompose it 
-    into a structured plan.
-    NOW WITH ROBUST JSON CLEANING.
+    Uses an LLM to decompose a query into a list of "tools" to run.
+    This is the new "Multi-Tool" Decomposer.
     """
-    print(f"--- Decomposing query with LLM: '{query_text}' ---")
+    print(f"--- Decomposing query for tools: '{query_text}' ---")
     if not GEMINI_API_KEY: 
         return {"error": "GEMINI_API_KEY not found."}
+
+    schema = get_db_schema()
     
     prompt = f"""
-    You are a query decomposition engine. Your job is to analyze the user's query and convert it into a structured JSON plan.
-    You have access to two main data sources:
-    1.  DOCUMENT_FILES: The user's uploaded files (e.g., "resume", "aadhar card").
-    2.  STUDENT_PROFILES: Structured data extracted from documents (e.g., skills, income, percentage).
+    You are a query planner. Your job is to list all the data "tools" needed to answer the user's query.
+    Respond with *only* a JSON list of tool names.
 
-    ### Schema & Intents ###
+    --- AVAILABLE TOOLS ---
+    - "GET_STUDENT_PROFILE": (User query) Gets the profile for student {student_id}. Use for "my skills", "my income", "am I eligible".
+    - "GET_STUDENT_DOCUMENTS": (User query) Gets the document *files* for student {student_id}. Use for "my resume", "my verified documents".
     
-    # Use this for queries about FILES
-    - "GET_DOCUMENTS": Fetches *files*. Use for queries about 'resume', 'marksheet file', 'aadhar'.
-        - 'params': {{"aggregate": "count", "value": "resume"}} (for "how many resumes")
-        - 'params': {{"verification_status": "Verified"}} (for "which documents are verified")
-
-    # Use this for queries about structured DATA
-    - "ANALYZE_PROFILES": Analyzes *student data*. Use for queries about 'skills', 'income', 'percentage'.
-        - 'params': {{"aggregate": "average", "field": "highest_percentage"}} (for "what is the average percentage")
-        - 'params': {{"aggregate": "count", "field": "skills", "value": "Python"}} (for "how many students know Python")
-
-    - "GET_JOBS": Fetches job listings.
-    - "GET_SCHOLARSHIPS": Fetches scholarship listings.
+    - "GET_ALL_STUDENT_PROFILES": (Admin query) Gets *all* profiles. Use for "average income", "how many students know Python".
+    - "GET_ALL_DOCUMENTS": (Admin query) Gets *all* document *files*. Use for "how many resumes are uploaded".
     
-    ### Examples ###
-    Query: "what is the average class 12% of all students"
-    Output: {{"user_name": null, "intents": [{{"target": "ANALYZE_PROFILES", "params": {{"aggregate": "average", "field": "highest_percentage"}}}}]}}
+    - "GET_ALL_JOBS": Use for any query about "jobs".
+    - "GET_ALL_SCHOLARSHIPS": Use for any query about "scholarships".
+    
+    - "CREATIVE_COACH": Use for "creative" queries ("write me a roadmap", "what job is best for me", "hello").
+    
+    --- EXAMPLES ---
+    
+    Query: "which student has the highest percentage"
+    Output:
+    ["GET_ALL_STUDENT_PROFILES"]
 
-    Query: "how many students know Python"
-    Output: {{"user_name": null, "intents": [{{"target": "ANALYZE_PROFILES", "params": {{"aggregate": "count", "field": "skills", "value": "Python"}}}}]}}
+    Query: "how many of my documents are verified"
+    Output:
+    ["GET_STUDENT_DOCUMENTS"]
 
-    Query: "which documents of mine are verified"
-    Output: {{"user_name": null, "intents": [{{"target": "GET_DOCUMENTS", "params": {{"verification_status": "Verified"}}}}]}}
+    Query: "show me all jobs"
+    Output:
+    ["GET_ALL_JOBS"]
 
-    # --- THIS IS THE CRITICAL NEW EXAMPLE ---
-    Query: "how many students have a resume uploaded"
-    Output: {{"user_name": null, "intents": [{{"target": "GET_DOCUMENTS", "params": {{"aggregate": "count", "value": "resume"}}}}]}}
+    Query: "which jobs am I eligible for"
+    (This is a mixed query: it needs the user's profile AND the job list)
+    Output:
+    ["GET_STUDENT_PROFILE", "GET_ALL_JOBS"]
+    
+    Query: "what job is best for me based on my skills"
+    (This is a mixed, creative query: it needs profile, jobs, and coaching)
+    Output:
+    ["GET_STUDENT_PROFILE", "GET_ALL_JOBS", "CREATIVE_COACH"]
 
-    Query: "show me my resume"
-    Output: {{"user_name": null, "intents": [{{"target": "GET_DOCUMENTS", "params": {{"value": "resume"}}}}]}}
+    Query: "how many students with verified resumes know Python"
+    (This is a mixed admin query: it needs all documents AND all profiles)
+    Output:
+    ["GET_ALL_DOCUMENTS", "GET_ALL_STUDENT_PROFILES"]
 
-    Query: "Which scholarship or job am I eligible in"
-    Output: {{"user_name": null, "intents": [{{"target": "GET_JOBS", "params": {{"filter_by_eligibility": true}}}}, {{"target": "GET_SCHOLARSHIPS", "params": {{"filter_by_eligibility": true}}}}]}}
-
-    ### User Query ###
+    --- USER QUERY ---
     Query: "{query_text}"
     Output:
     """
@@ -234,9 +270,7 @@ def analyze_and_decompose_query_with_llm(query_text):
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "responseMimeType": "application/json"
-        }
+        "generationConfig": {"responseMimeType": "application/json"}
     }
     
     try:
@@ -245,282 +279,196 @@ def analyze_and_decompose_query_with_llm(query_text):
         result = response.json()
         
         if 'candidates' not in result:
-            print(f"ERROR: LLM returned no candidates. Response: {result}")
-            return {"error": f"LLM returned no candidates. {result.get('error', {}).get('message', '')}"}
+            return {"error": "LLM returned no candidates."}
 
-        text_response = result['candidates'][0]['content']['parts'][0]['text']
+        text_response = result['candidates'][0]['content']['parts'][0]['text'].strip()
         
-        # --- ROBUST JSON PARSING ---
-        text_response = text_response.replace("None", "null") # Fix Python None vs JSON null
+        # Robust JSON parsing
+        text_response = text_response.replace("None", "null")
+        start = text_response.find('[')
+        end = text_response.rfind(']') + 1
+        if start == -1 or end == 0:
+            raise ValueError("No JSON array found in response")
         
-        try:
-            plan = json.loads(text_response)
-            print(f"LLM generated plan (direct): {plan}") 
-            return plan
-        except json.JSONDecodeError:
-            print("Direct JSON load failed. Attempting to clean response...")
-            try:
-                start = text_response.find('{')
-                end = text_response.rfind('}') + 1
-                if start == -1 or end == 0:
-                    raise ValueError("No JSON object found in response")
-                
-                cleaned_json_text = text_response[start:end]
-                plan = json.loads(cleaned_json_text)
-                print(f"LLM generated plan (cleaned): {plan}") 
-                return plan
-            except Exception as e:
-                print(f"ERROR: LLM returned invalid JSON. Cleaning failed. Error: {e}")
-                print(f"--- LLM Raw Response Text ---")
-                print(text_response)
-                print(f"--- End of Raw Response ---")
-                return {"error": f"LLM returned invalid JSON: {text_response}"}
+        cleaned_json_text = text_response[start:end]
+        tool_list = json.loads(cleaned_json_text)
+        
+        return {"tools": tool_list}
 
     except Exception as e:
-        print(f"ERROR: LLM API call failed. {e}")
-        return {"error": f"Could not get a valid plan from the LLM: {e}"}
+        print(f"ERROR: LLM Tool generation failed: {e}")
+        return {"error": f"LLM Tool generation failed: {e}"}
 
 # ==============================================================================
-# 4. QUERY EXECUTION (The "Smart Filter")
+# 5. AI "BRAIN" - STEP 2: EXECUTOR (Runs the tools)
 # ==============================================================================
 
-def execute_query_plan(plan, student_id=None, original_query=""):
+def execute_tool_plan(plan, student_id=None):
     """
-    Executes all intents in the query plan.
-    Uses the "Smart Filter" (local Python) for jobs/scholarships.
-    Uses direct DB queries for documents.
+    Executes the list of tools from the decomposer
+    and gathers all data into a single context object.
     """
-    print(f"--- Executing Full Query Plan (Context: student_id={student_id}) ---")
+    print(f"--- Executing Tool Plan (Context: student_id={student_id}) ---")
     
     if "error" in plan:
-        return summarize_results_with_llm(plan, original_query)
-    if not plan.get("intents"): 
-        return summarize_results_with_llm(
-            {"message": "I'm sorry, I couldn't understand that request. Please ask about jobs, scholarships, or your documents."},
-            original_query
-        )
+        return {"error": plan['error']}
     
-    final_results = {}
+    tool_list = plan.get("tools", [])
+    if not tool_list:
+        return {"error": "No tools were specified by the planner."}
     
-    # Get student qualifications *once* from our fast, local DB
-    qualifications = get_student_qualifications(student_id) if student_id else {}
-
-    for intent_data in plan["intents"]:
-        intent = intent_data.get("target")
-        params = intent_data.get("params", {})
-
-        # --- INTENT: GET_JOBS ---
-        if intent == "GET_JOBS":
-            try:
-                # 1. Fetch ALL jobs from partner
-                endpoint = f'http://{PARTNER_IP}:5000/api/jobs'
-                print(f"Making REAL API call for all jobs to: {endpoint}")
-                response = requests.get(endpoint, timeout=10)
-                response.raise_for_status()
-                all_jobs = response.json()
-                
-                if params.get("aggregate") == "count" and not params.get("filter_by_eligibility"):
-                    final_results['jobs_count'] = {"count": len(all_jobs)}
-                
-                # 2. "Smart Filter" (local Python)
-                elif params.get("filter_by_eligibility") and student_id:
-                    print(f"Filtering {len(all_jobs)} jobs based on profile: {qualifications}")
-                    eligible_jobs = []
-                    student_skills = [s.lower() for s in qualifications.get("skills", [])]
-                    
-                    for job in all_jobs:
-                        try:
-                            criteria = json.loads(job.get("eligibility_criteria", "{}"))
-                            job_skills = criteria.get("skills", "").lower()
-                            
-                            if any(skill in job_skills for skill in student_skills if skill):
-                                eligible_jobs.append(job)
-                                
-                        except Exception as e:
-                            print(f"Skipping job, bad criteria: {e}")
-                            continue 
-                    
-                    if params.get("aggregate") == "count":
-                        final_results['jobs_count'] = {"count": len(eligible_jobs)}
-                    else:
-                        final_results['jobs'] = eligible_jobs
-                
-                else:
-                    final_results['jobs'] = all_jobs # Return all jobs if no filter
-                    
-            except requests.exceptions.RequestException as e:
-                final_results['jobs'] = {"error": f"Failed to fetch jobs: {e}"}
-
-        # --- INTENT: GET_SCHOLARSHIPS ---
-        elif intent == "GET_SCHOLARSHIPS":
-            try:
-                # 1. Fetch ALL scholarships
-                endpoint = f'http://{PARTNER_IP}:5000/api/scholarships'
-                print(f"Making REAL API call for all scholarships to: {endpoint}")
-                response = requests.get(endpoint, timeout=10)
-                response.raise_for_status()
-                all_scholarships = response.json()
-
-                if params.get("aggregate") == "count" and not params.get("filter_by_eligibility"):
-                    final_results['scholarships_count'] = {"count": len(all_scholarships)}
-
-                # 2. "Smart Filter" (local Python)
-                elif params.get("filter_by_eligibility") and student_id:
-                    print(f"Filtering {len(all_scholarships)} scholarships based on profile: {qualifications}")
-                    eligible_scholarships = []
-                    student_income = qualifications.get("income")
-                    student_perc = qualifications.get("highest_percentage")
-
-                    for schol in all_scholarships:
-                        try:
-                            criteria = json.loads(schol.get("eligibility_criteria", "{}"))
-                            max_income = criteria.get("income")
-                            min_perc = criteria.get("annual_percentage")
-
-                            income_eligible = True
-                            perc_eligible = True
-                            
-                            if student_income and max_income:
-                                income_eligible = student_income <= int(max_income)
-                            
-                            if student_perc and min_perc:
-                                perc_eligible = student_perc >= float(min_perc)
-                                
-                            if income_eligible and perc_eligible:
-                                eligible_scholarships.append(schol)
-
-                        except Exception as e:
-                            print(f"Skipping scholarship, bad criteria: {e}")
-                            continue
-
-                    if params.get("aggregate") == "count":
-                        final_results['scholarships_count'] = {"count": len(eligible_scholarships)}
-                    else:
-                        final_results['scholarships'] = eligible_scholarships
-                
-                else:
-                     final_results['scholarships'] = all_scholarships
-            
-            except requests.exceptions.RequestException as e:
-                final_results['scholarships'] = {"error": f"Failed to fetch scholarships: {e}"}
-
-        # --- INTENT: GET_DOCUMENTS ---
-        elif intent == "GET_DOCUMENTS":
-            print("--- Querying Document Files ---")
-            try:
-                docs_query = Document.objects.all()
-
-                # A. Admin "All Students" context
-                if not student_id: 
-                    pass # Start with all documents
-                # B. Specific Student context
-                else: 
-                    docs_query = docs_query.filter(student_id=student_id)
-                
-                # Check for file type filter (e.g., "resume", "aadhar")
-                value_filter = params.get("value")
-                if value_filter:
-                    docs_query = docs_query.filter(document_type__icontains=value_filter)
-
-                # Check for status filter
-                status_filter = params.get('verification_status')
-                if status_filter:
-                    docs_query = docs_query.filter(verification_status=status_filter)
-                
-                # Check for aggregation
-                if params.get("aggregate") == "count":
-                    count = docs_query.count()
-                    final_results['document_aggregate'] = {"count": count, "query_details": f"documents matching {params}"}
-                else:
-                    # Return the list of documents
-                    final_results['documents'] = [
-                        {"type": d.document_type, "status": d.verification_status, "id": d.document_id} 
-                        for d in docs_query
-                    ]
-            
-            except Exception as e:
-                final_results['documents'] = {"error": f"Failed to fetch documents locally: {e}"}
-
-        elif intent == "ANALYZE_PROFILES":
-            print("--- Analyzing Student Profiles ---")
-            try:
-                profile_query = StudentProfile.objects.all()
-                
-                # Check for filters (e.g., "how many students know Python")
-                field_to_filter = params.get("field")
-                value_to_filter = params.get("value")
-                
-                if field_to_filter == "skills" and value_to_filter:
-                    profile_query = profile_query.filter(verified_skills__icontains=value_to_filter)
-                
-                aggregation_type = params.get("aggregate")
-                field_to_aggregate = params.get("field")
-
-                if aggregation_type == "count":
-                    count = profile_query.count()
-                    final_results['profile_analysis'] = {"count": count, "query_details": f"students matching {params}"}
-                
-                elif aggregation_type == "average":
-                    if field_to_aggregate == "highest_percentage":
-                        result = profile_query.aggregate(average=Avg('highest_percentage'))
-                        final_results['profile_analysis'] = {"average_percentage": result['average']}
-                    elif field_to_aggregate == "income":
-                        result = profile_query.aggregate(average=Avg('annual_income'))
-                        final_results['profile_analysis'] = {"average_income": result['average']}
-                    else:
-                        final_results['profile_analysis'] = {"error": "Average calculation is only supported for 'income' or 'highest_percentage'."}
-                
-                # --- NEW: Gracefully handle 'mode' ---
-                elif aggregation_type == "mode":
-                    # (A real 'mode' query is very complex. We'll handle it gracefully.)
-                    avg_result = profile_query.aggregate(average=Avg('highest_percentage'))
-                    final_results['profile_analysis'] = {
-                        "message": "Mode calculation is not supported, but I can give you the average!",
-                        "average_percentage": avg_result['average']
-                    }
-                
-                else:
-                    final_results['profile_analysis'] = {"message": "I understood you want to analyze profiles, but I'm not sure how."}
-                    
-            except Exception as e:
-                print(f"ERROR: Profile analysis failed: {e}")
-                final_results['profile_analysis'] = {"error": f"Error analyzing profiles: {e}"}
-        # --- INTENT: ANALYZE_SKILLS ---
-
-        elif intent == "ANALYZE_SKILLS":
-            job_title_param = params.get('job_title', 'a generic job')
-            mock_job_description = f"We are looking for a {job_title_param} to help us with our government projects."
-            
-            skills_endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
-            prompt = f"Based on the following job description, list the top 5 most important technical skills. Return only a JSON array of strings. Description: '{mock_job_description}'"
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "responseMimeType": "application/json"
-                }
-            }
-            try:
-                response = requests.post(skills_endpoint, json=payload, timeout=15)
-                response.raise_for_status()
-                result = response.json()
-                text_response = result['candidates'][0]['content']['parts'][0]['text']
-                
-                text_response = text_response.replace("None", "null") # Fix Python None vs JSON null
-                
-                try:
-                    skills = json.loads(text_response)
-                except json.JSONDecodeError:
-                    start = text_response.find('[')
-                    end = text_response.rfind(']') + 1
-                    cleaned_json_text = text_response[start:end]
-                    skills = json.loads(cleaned_json_text)
-
-                final_results['skill_analysis'] = {"job_title": job_title_param, "required_skills": skills}
-            except Exception as e:
-                 final_results['skill_analysis'] = {"error": f"Error fetching skills: {e}"}
-
-    if not final_results:
-        final_results = {"message": "I understood the request, but couldn't find any relevant data."}
+    # This is where we will store all the data we fetch
+    context_data = {
+        "student_id_context": student_id
+    }
     
-    # --- Final Step: Summarize all results ---
-    return summarize_results_with_llm(final_results, original_query)
+    # This is a special flag for creative queries
+    if "CREATIVE_COACH" in tool_list:
+        context_data["creative_request"] = True
+    
+    try:
+        for tool in tool_list:
+            if tool == "GET_STUDENT_PROFILE":
+                context_data["student_profile"] = get_student_qualifications(student_id)
+            elif tool == "GET_ALL_STUDENT_PROFILES":
+                context_data["all_student_profiles"] = get_all_student_profiles_from_db()
+            elif tool == "GET_STUDENT_DOCUMENTS":
+                context_data["student_documents"] = get_student_documents_from_db(student_id)
+            elif tool == "GET_ALL_DOCUMENTS":
+                context_data["all_documents"] = get_all_documents_from_db()
+            elif tool == "GET_ALL_JOBS":
+                context_data["jobs_list"] = get_all_jobs_from_api()
+            elif tool == "GET_ALL_SCHOLARSHIPS":
+                context_data["scholarships_list"] = get_all_scholarships_from_api()
+        
+        # This is the "Data Context" we will send to the final AI
+        return context_data
+    
+    except Exception as e:
+        print(f"ERROR: Tool execution failed: {e}")
+        return {"error": f"A tool failed to run: {e}"}
+
+# ==============================================================================
+# 6. AI "BRAIN" - STEP 3: SYNTHESIZER (Answers the query)
+# ==============================================================================
+
+def get_synthesized_answer(context_data, original_query):
+    """
+    The "Synthesizer" AI.
+    Receives all fetched data and the user's query,
+    and formulates the final answer.
+    """
+    print("--- Synthesizing Final Answer ---")
+    if not GEMINI_API_KEY:
+        return {"error": "LLM not configured for synthesis."}
+    
+    if "error" in context_data:
+        # If a tool failed, just summarize that error
+        return summarize_results_fallback(context_data, original_query) # Call fallback
+    
+    # --- THIS SOLVES THE TOKEN LIMIT ---
+    # We must truncate the data we send to the AI.
+    
+    if "jobs_list" in context_data and isinstance(context_data["jobs_list"], list):
+        job_count = len(context_data["jobs_list"])
+        # If the list is too big, only send the first 50 and a summary
+        if job_count > 50:
+            context_data["jobs_list"] = context_data["jobs_list"][:50]
+            context_data["jobs_list_summary"] = f"Showing 50 out of {job_count} total jobs."
+    
+    if "all_student_profiles" in context_data and isinstance(context_data["all_student_profiles"], list):
+        profile_count = len(context_data["all_student_profiles"])
+        if profile_count > 50:
+            context_data["all_student_profiles"] = context_data["all_student_profiles"][:50]
+            context_data["all_student_profiles_summary"] = f"Showing 50 out of {profile_count} total profiles."
+    
+    if "all_documents" in context_data and isinstance(context_data["all_documents"], list):
+        doc_count = len(context_data["all_documents"])
+        if doc_count > 50:
+            context_data["all_documents"] = context_data["all_documents"][:50]
+            context_data["all_documents_summary"] = f"Showing 50 out of {doc_count} total documents."
+    
+    if "scholarships_list" in context_data and isinstance(context_data["scholarships_list"], list):
+        schol_count = len(context_data["scholarships_list"])
+        if schol_count > 50:
+            context_data["scholarships_list"] = context_data["scholarships_list"][:50]
+            context_data["scholarships_list_summary"] = f"Showing 50 out of {schol_count} total scholarships."
+    # --- END OF TOKEN LIMIT FIX ---
+    
+    context_string = json.dumps(context_data, indent=2)
+    
+    # If this is a creative query, we use the "Career Coach" prompt
+    if context_data.get("creative_request"):
+        prompt_type = "CAREER COACH"
+        prompt = f"""
+        You are a helpful and inspiring student career coach.
+        You will be given a student's query and their profile data.
+        Your job is to provide a thoughtful, encouraging, and actionable response.
+        
+        User's Query: "{original_query}"
+        Data Context (JSON):
+        {context_string}
+        
+        Instructions:
+        - Analyze their query in the context of their "student_profile".
+        - If they ask for a "roadmap", provide a step-by-step plan.
+        - If they ask "what job is best for me", analyze their "verified_skills"
+          against the "jobs_list" and recommend the top 3 matches, explaining *why*.
+        - Be conversational and encouraging.
+
+        Your Answer:
+        """
+    else:
+        # This is a pure data query
+        prompt_type = "DATA ANALYST"
+        prompt = f"""
+        You are a world-class data analyst. Your job is to answer the user's question
+        using the provided data context.
+        
+        User's Query: "{original_query}"
+        Data Context (JSON):
+        {context_string}
+        
+        Instructions:
+        - Analyze the data to find the answer.
+        - Perform any required calculations (average, count, mode, max, min).
+        - You can *cross-reference* data. (e.g., find profiles in 'all_student_profiles' that match documents in 'all_documents').
+        - Be concise, factual, and answer the question directly.
+
+        Your Answer:
+        """
+    
+    print(f"--- Calling Synthesizer AI as: {prompt_type} ---")
+    
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+    try:
+        response = requests.post(api_url, json=payload, timeout=45)
+        response.raise_for_status()
+        result = response.json()
+        text_response = result['candidates'][0]['content']['parts'][0]['text']
+        return {"response_text": text_response}
+    except Exception as e:
+        print(f"ERROR: LLM Synthesis failed: {e}")
+        return {"response_text": f"Sorry, I encountered an error: {e}"}
+
+# ==============================================================================
+# 7. FALLBACK SUMMARIZER (Error handling)
+# ==============================================================================
+
+def summarize_results_fallback(results, original_query):
+    """
+    FALLBACK: Takes a simple JSON error and summarizes it.
+    """
+    print("--- Summarizing results (Fallback) ---")
+    results_string = json.dumps(results, indent=2)
+    prompt = f"Politely summarize this data or error message for a user. Query: '{original_query}'. Data: {results_string}"
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    try:
+        response = requests.post(api_url, json=payload, timeout =20)
+        response.raise_for_status(); result = response.json()
+        return {"response_text": result['candidates'][0]['content']['parts'][0]['text']}
+    except Exception as e:
+        return {"response_text": f"Sorry, an error occurred: {e}"}

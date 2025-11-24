@@ -125,8 +125,15 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:5173", # The origin for your React app
+# ]
+
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173", # The origin for your React app
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://192.168.52.110:5173", # <-- ADD YOUR IP
+    "http://192.168.52.109:5173", # <-- ADD YOUR PARTNER'S IP
 ]
 
 # Internationalization

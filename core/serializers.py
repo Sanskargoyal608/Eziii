@@ -1,7 +1,7 @@
 # core/serializers.py
 
 from rest_framework import serializers
-from .models import Document , Student
+from .models import Document, Student, GovtJob, Scholarship, StudentProfile, Skill, StudentSkill
 from django.contrib.auth.hashers import make_password
 
 class DocumentSerializer(serializers.ModelSerializer):
