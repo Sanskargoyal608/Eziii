@@ -7,6 +7,9 @@ import shutil
 # --- NEW IMPORT ---
 from pdf2image import convert_from_path
 
+PARTNER_IP = "192.168.52.109" # Ensure this matches your settings
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 # Diagnostic check for Tesseract
 if not shutil.which("tesseract"):
     print("="*50)
@@ -70,3 +73,59 @@ def extract_text_from_file(file_path):
         return f"Error extracting text: {e}"
     
     return text
+
+def get_recommended_jobs_from_llm(student_profile):
+    """
+    Fetches ALL jobs from the partner API, then uses LLM to filter 
+    them based on the student_profile.
+    """
+    print(f"--- Fetching and Filtering Jobs for Profile: {student_profile} ---")
+    
+    # 1. Fetch All Jobs
+    jobs_url = f'http://{PARTNER_IP}:5000/api/jobs'
+    try:
+        response = requests.get(jobs_url, timeout=10)
+        response.raise_for_status()
+        all_jobs = response.json()
+    except Exception as e:
+        return {"error": f"Failed to fetch jobs from partner: {e}"}
+
+    # 2. Filter with LLM
+    # We send the profile + jobs list to Gemini
+    
+    # Optimization: Limit to first 30 jobs to avoid token limits if list is huge
+    jobs_context = all_jobs[:30] 
+    
+    prompt = f"""
+    You are a Recruiting AI.
+    
+    Student Profile:
+    {json.dumps(student_profile)}
+
+    Job List (JSON):
+    {json.dumps(jobs_context)}
+
+    Task:
+    1. Analyze the 'description' or 'eligibility' of each job.
+    2. Compare it with the Student Profile (Skills, Degree, Percentage).
+    3. Return a JSON List of ONLY the jobs the student is eligible for.
+    4. Add a field "match_reason" to each job explaining why it fits (e.g., "Matches Python skill").
+    
+    Return ONLY valid JSON. Empty list [] if no matches.
+    """
+
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_API_KEY}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"responseMimeType": "application/json"}
+    }
+
+    try:
+        response = requests.post(api_url, json=payload, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+        text_response = result['candidates'][0]['content']['parts'][0]['text']
+        return json.loads(text_response)
+    except Exception as e:
+        print(f"LLM Filtering failed: {e}")
+        return [] # Return empty list on failure rather than crashing

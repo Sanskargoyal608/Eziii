@@ -6,8 +6,9 @@ from .models import Document, Student, GovtJob
 from rest_framework.permissions import AllowAny, IsAuthenticated 
 from rest_framework.parsers import MultiPartParser, FormParser
 from .serializers import DocumentSerializer, StudentSerializer , DocumentUploadSerializer, StudentRegistrationSerializer
-from .utils import extract_text_from_file
+from .utils import extract_text_from_file , get_recommended_jobs_from_llm
 import os
+from .models import StudentProfile
 
 from django.conf import settings
 from PIL import Image # <-- ADD THIS
@@ -282,6 +283,36 @@ class GeneratePDFView(APIView):
         return response
     
 
+class RecommendedJobsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, format=None):
+        student = request.user
+        
+        # 1. Get the Student's Profile
+        try:
+            profile = StudentProfile.objects.get(student=student)
+            student_data = {
+                "degrees": profile.degrees,
+                "highest_percentage": profile.highest_percentage,
+                "skills": profile.verified_skills
+            }
+        except StudentProfile.DoesNotExist:
+            return Response(
+                {"error": "Profile not found. Please upload documents first."}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 2. Call the LLM to fetch and filter jobs
+        # This function will handle fetching from Partner API + LLM Filtering
+        recommended_jobs = get_recommended_jobs_from_llm(student_data)
+        
+        if "error" in recommended_jobs:
+             return Response(recommended_jobs, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response(recommended_jobs, status=status.HTTP_200_OK)
+    
+    
 class AdminDashboardView(APIView):
     """
     Public view for the admin dashboard.

@@ -2,7 +2,7 @@
 
 from django.urls import path
 from .views import DocumentListView
-from .views import FederatedQueryView , StudentListView , RegisterView , LoginView , DocumentUploadView , GeneratePDFView , AdminDashboardView , StudentSummaryView , AdminChatView
+from .views import FederatedQueryView , StudentListView , RegisterView , LoginView , DocumentUploadView , GeneratePDFView , AdminDashboardView , StudentSummaryView , AdminChatView , RecommendedJobsView
 
 urlpatterns = [
 
@@ -21,4 +21,5 @@ urlpatterns = [
     path('documents/upload/', DocumentUploadView.as_view(), name='document-upload'),
 
     path('generate-pdf/', GeneratePDFView.as_view(), name='generate-pdf'),
+    path('jobs/recommended/', RecommendedJobsView.as_view(), name='recommended-jobs'),
 ]

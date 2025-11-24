@@ -1,40 +1,60 @@
+// frontend/src/components/AdminChat.jsx
 import React, { useState, useEffect } from 'react';
-import { apiFetch } from '../api'; // Import our apiFetch function
-import styles from '../App.module.css'; // Re-use the same styles
+import { apiFetch } from '../api'; 
+import styles from '../App.module.css'; 
 
-// Re-using the SendIcon
 const SendIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className={styles.icon} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
 );
 
 const AdminChat = () => {
-    const [messages, setMessages] = useState([
-        { id: 1, text: "Welcome, Admin. Select a student context and ask a query.", sender: 'bot' }
-    ]);
+    // 1. Initialize from localStorage
+    const [messages, setMessages] = useState(() => {
+        const savedMessages = localStorage.getItem('admin_chat_history');
+        return savedMessages 
+            ? JSON.parse(savedMessages) 
+            : [{ id: 1, text: "Welcome, Admin. Select a student context and ask a query.", sender: 'bot' }];
+    });
+
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    
-    // --- NEW: State for student list and selection ---
     const [students, setStudents] = useState([]);
-    const [selectedStudentId, setSelectedStudentId] = useState('all'); // Default to 'all'
+    
+    // Initialize student selection from localStorage or default to 'all'
+    const [selectedStudentId, setSelectedStudentId] = useState(() => {
+        return localStorage.getItem('admin_chat_context') || 'all';
+    });
 
-    // --- NEW: Fetch all students for the dropdown ---
+    // 2. Fetch students
     useEffect(() => {
         const fetchStudents = async () => {
             try {
-                // We can re-use the dashboard endpoint to get the student list
                 const response = await apiFetch('/portal/dashboard/');
-                if (!response.ok) {
-                    throw new Error('Failed to fetch students');
-                }
+                if (!response.ok) throw new Error('Failed to fetch students');
                 const data = await response.json();
                 setStudents(data.students);
             } catch (err) {
-                console.error("Error fetching students for chat:", err);
+                console.error("Error fetching students:", err);
             }
         };
         fetchStudents();
-    }, []); // Runs once on component mount
+    }, []); 
+
+    // 3. Save messages to localStorage whenever they change
+    useEffect(() => {
+        localStorage.setItem('admin_chat_history', JSON.stringify(messages));
+    }, [messages]);
+
+    // 4. Save selected context to localStorage whenever it changes
+    useEffect(() => {
+        localStorage.setItem('admin_chat_context', selectedStudentId);
+    }, [selectedStudentId]);
+
+    const clearChat = () => {
+        const resetMessage = [{ id: Date.now(), text: "Admin chat history cleared.", sender: 'bot' }];
+        setMessages(resetMessage);
+        localStorage.removeItem('admin_chat_history');
+    };
 
     const handleSend = async () => {
         if (input.trim() === '' || isLoading) return;
@@ -45,12 +65,11 @@ const AdminChat = () => {
         setIsLoading(true);
 
         try {
-            // --- MODIFIED: Send to the new admin chat endpoint ---
             const response = await apiFetch('/portal/chat/', {
                 method: 'POST',
                 body: JSON.stringify({ 
                     query: input,
-                    student_id: selectedStudentId // --- NEW: Send the selected student ID
+                    student_id: selectedStudentId 
                 }),
             });
 
@@ -60,7 +79,6 @@ const AdminChat = () => {
             }
 
             const data = await response.json();
-            
             const botResponseText = data.response_text || JSON.stringify(data, null, 2);
             const botMessage = { id: Date.now() + 1, text: botResponseText, sender: 'bot' };
             setMessages(prev => [...prev, botMessage]);
@@ -76,24 +94,30 @@ const AdminChat = () => {
 
     return (
         <div className={styles.chatContainer}>
-            {/* --- NEW: Student Selector Dropdown --- */}
-            <div className={styles.inputGroup} style={{ padding: '1rem', borderBottom: `1px solid ${styles.borderColor}` }}>
-                <label htmlFor="studentSelect" style={{color: 'white', marginBottom: '0.5rem'}}>Query Context:</label>
-                <select 
-                    id="studentSelect" 
-                    className={styles.selectInput}
-                    value={selectedStudentId}
-                    onChange={(e) => setSelectedStudentId(e.target.value)}
+            <div className={styles.inputGroup} style={{ padding: '1rem', borderBottom: `1px solid ${styles.borderColor}`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div style={{flex: 1}}>
+                    <label htmlFor="studentSelect" style={{color: 'white', marginBottom: '0.5rem', display:'block'}}>Query Context:</label>
+                    <select 
+                        id="studentSelect" 
+                        className={styles.selectInput}
+                        value={selectedStudentId}
+                        onChange={(e) => setSelectedStudentId(e.target.value)}
+                    >
+                        <option value="all">All Students (Aggregate Queries)</option>
+                        {students.map(student => (
+                            <option key={student.student_id} value={student.student_id}>
+                                {student.full_name} (ID: {student.student_id})
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                <button 
+                    onClick={clearChat} 
+                    style={{marginLeft: '15px', fontSize: '0.8rem', padding: '8px 12px', cursor: 'pointer', background: '#ff4d4d', color: 'white', border: 'none', borderRadius: '4px', height: 'fit-content'}}
                 >
-                    <option value="all">All Students (Aggregate Queries)</option>
-                    {students.map(student => (
-                        <option key={student.student_id} value={student.student_id}>
-                            {student.full_name} (ID: {student.student_id})
-                        </option>
-                    ))}
-                </select>
+                    Clear Chat
+                </button>
             </div>
-            {/* --- End of new section --- */}
             
             <div className={styles.messageList}>
                 {messages.map((msg) => (

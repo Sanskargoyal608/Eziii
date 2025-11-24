@@ -232,12 +232,28 @@ const RegisterPage = () => {
 
 // --- (Federated Chat: FederatedChat remains exactly the same) ---
 const FederatedChat = () => {
-    // --- (This component's content is unchanged) ---
-    const [messages, setMessages] = useState([
-        { id: 1, text: "Welcome! Ask me to find jobs, scholarships, or your documents.", sender: 'bot' }
-    ]);
+    // 1. Initialize state from localStorage if available
+    const [messages, setMessages] = useState(() => {
+        const savedMessages = localStorage.getItem('student_chat_history');
+        return savedMessages 
+            ? JSON.parse(savedMessages) 
+            : [{ id: 1, text: "Welcome! Ask me to find jobs, scholarships, or your documents.", sender: 'bot' }];
+    });
+    
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+
+    // 2. Save to localStorage whenever messages change
+    useEffect(() => {
+        localStorage.setItem('student_chat_history', JSON.stringify(messages));
+    }, [messages]);
+
+    // 3. Helper to clear chat
+    const clearChat = () => {
+        const resetMessage = [{ id: Date.now(), text: "Chat history cleared. How can I help?", sender: 'bot' }];
+        setMessages(resetMessage);
+        localStorage.removeItem('student_chat_history');
+    };
 
     const handleSend = async () => {
         if (input.trim() === '' || isLoading) return;
@@ -248,7 +264,7 @@ const FederatedChat = () => {
         setIsLoading(true);
 
         try {
-            const response = await apiFetch('/federated-query/', { // Uses /api/federated-query/
+            const response = await apiFetch('/federated-query/', { 
                 method: 'POST',
                 body: JSON.stringify({ query: input }),
             });
@@ -274,6 +290,16 @@ const FederatedChat = () => {
 
     return (
         <div className={styles.chatContainer}>
+            {/* Header with Clear Button */}
+            <div style={{display: 'flex', justifyContent: 'flex-end', padding: '0.5rem'}}>
+                <button 
+                    onClick={clearChat} 
+                    style={{fontSize: '0.8rem', padding: '5px 10px', cursor: 'pointer', background: '#ff4d4d', color: 'white', border: 'none', borderRadius: '4px'}}
+                >
+                    Clear History
+                </button>
+            </div>
+
             <div className={styles.messageList}>
                 {messages.map((msg) => (
                     <div key={msg.id} className={`${styles.message} ${msg.sender === 'user' ? styles.userMessage : styles.botMessage}`}>

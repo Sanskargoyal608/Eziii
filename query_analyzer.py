@@ -126,6 +126,8 @@ def get_student_qualifications(student_id):
     try:
         profile = StudentProfile.objects.get(student_id=student_id)
         qualifications = {
+            'full_name': profile.student.full_name,   # <--- Added Name
+            'email': profile.student.email,
             'income': profile.annual_income,
             'degrees': profile.degrees,
             'highest_percentage': profile.highest_percentage,
@@ -222,45 +224,35 @@ def analyze_query_for_tools(query_text, student_id=None):
     Respond with *only* a JSON list of tool names.
 
     --- AVAILABLE TOOLS ---
-    - "GET_STUDENT_PROFILE": (User query) Gets the profile for student {student_id}. Use for "my skills", "my income", "am I eligible".
-    - "GET_STUDENT_DOCUMENTS": (User query) Gets the document *files* for student {student_id}. Use for "my resume", "my verified documents".
     
-    - "GET_ALL_STUDENT_PROFILES": (Admin query) Gets *all* profiles. Use for "average income", "how many students know Python".
-    - "GET_ALL_DOCUMENTS": (Admin query) Gets *all* document *files*. Use for "how many resumes are uploaded".
-    
-    - "GET_ALL_JOBS": Use for any query about "jobs".
-    - "GET_ALL_SCHOLARSHIPS": Use for any query about "scholarships".
-    
-    - "CREATIVE_COACH": Use for "creative" queries ("write me a roadmap", "what job is best for me", "hello").
-    
+    1. USER DATA TOOLS (For queries about "me", "my", "I"):
+    - "GET_STUDENT_PROFILE": Use for "my name", "my skills", "my income", "am I eligible".
+    - "GET_STUDENT_DOCUMENTS": Use for "my verified documents", "my aadhar", "my resume status".
+
+    2. ADMIN AGGREGATE TOOLS (For queries about "students", "all", "how many"):
+    - "GET_ALL_STUDENT_PROFILES": Use ONLY for skills, income, or degrees. (e.g., "avg income", "students who know Python").
+    - "GET_ALL_DOCUMENTS": Use for ANY check regarding verification status or document types. (e.g., "how many verified", "students with Aadhar", "pending documents").
+
+    3. EXTERNAL DATA TOOLS:
+    - "GET_ALL_JOBS": Use for "jobs", "vacancies".
+    - "GET_ALL_SCHOLARSHIPS": Use for "scholarships".
+
+    4. GENERAL:
+    - "CREATIVE_COACH": Use for generic advice ("roadmap", "what should I do", "hello").
+
     --- EXAMPLES ---
     
-    Query: "which student has the highest percentage"
-    Output:
-    ["GET_ALL_STUDENT_PROFILES"]
+    Query: "what is my name"
+    Output: ["GET_STUDENT_PROFILE"]
 
-    Query: "how many of my documents are verified"
-    Output:
-    ["GET_STUDENT_DOCUMENTS"]
+    Query: "how many students have aadhar verified"
+    Output: ["GET_ALL_DOCUMENTS"]  <-- Corrects the previous error
 
-    Query: "show me all jobs"
-    Output:
-    ["GET_ALL_JOBS"]
+    Query: "show me verified students"
+    Output: ["GET_ALL_DOCUMENTS"]
 
-    Query: "which jobs am I eligible for"
-    (This is a mixed query: it needs the user's profile AND the job list)
-    Output:
-    ["GET_STUDENT_PROFILE", "GET_ALL_JOBS"]
-    
-    Query: "what job is best for me based on my skills"
-    (This is a mixed, creative query: it needs profile, jobs, and coaching)
-    Output:
-    ["GET_STUDENT_PROFILE", "GET_ALL_JOBS", "CREATIVE_COACH"]
-
-    Query: "how many students with verified resumes know Python"
-    (This is a mixed admin query: it needs all documents AND all profiles)
-    Output:
-    ["GET_ALL_DOCUMENTS", "GET_ALL_STUDENT_PROFILES"]
+    Query: "which students know Django"
+    Output: ["GET_ALL_STUDENT_PROFILES"]
 
     --- USER QUERY ---
     Query: "{query_text}"
