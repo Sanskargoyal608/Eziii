@@ -3,6 +3,9 @@ import PyPDF2
 import pytesseract
 from PIL import Image
 from django.conf import settings
+import requests
+import json
+import os
 import shutil
 # --- NEW IMPORT ---
 from pdf2image import convert_from_path
